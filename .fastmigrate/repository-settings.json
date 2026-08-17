@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "repository": "fastmigrate/pagescms",
+  "visibility": "public",
+  "description": "FastMigrate downstream distribution of Pages CMS",
+  "homepage": "https://cms.fastmigrate.net",
+  "defaultBranch": "fastmigrate/{upstreamVersion}",
+  "features": {
+    "issues": true,
+    "projects": false,
+    "wiki": false
+  },
+  "mergePolicy": {
+    "mergeCommits": false,
+    "squashMerges": true,
+    "rebaseMerges": true,
+    "deleteHeadBranches": true
+  },
+  "security": {
+    "vulnerabilityAlerts": true,
+    "automatedSecurityFixes": true,
+    "privateVulnerabilityReporting": true
+  },
+  "branchProtection": {
+    "main": {
+      "requiredStatusChecks": []
+    },
+    "release": {
+      "requiredStatusChecks": [
+        "validate"
+      ]
+    }
+  }
+}

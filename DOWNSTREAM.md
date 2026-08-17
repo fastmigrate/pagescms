@@ -13,6 +13,22 @@ and infrastructure secrets.
 No credentials, customer repositories, deployment inventories, or production
 configuration belong in this repository.
 
+## Repository configuration
+
+GitHub metadata, features, security switches, the default branch, and branch
+protection live in `.fastmigrate/repository-settings.json`. Restore or
+reconcile them with an authenticated GitHub CLI session:
+
+```sh
+npm run repo:settings:apply
+npm run repo:settings:check
+```
+
+Both commands are idempotent. `--apply` uses convergent PUT/PATCH operations
+and verifies the result; `--check` is read-only and reports drift. CI runs the
+offline schema check, while authenticated infrastructure recovery runs the
+live reconciliation. No token or organization credential is stored here.
+
 ## Branch and release policy
 
 - `main` mirrors the approved upstream base without FastMigrate patches.
