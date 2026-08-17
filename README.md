@@ -1,6 +1,6 @@
 # Pages CMS
 
-> This repository is the private FastMigrate downstream. See
+> This repository is the public FastMigrate downstream fork. See
 > [DOWNSTREAM.md](DOWNSTREAM.md) for its update and release policy and
 > [PATCHES.md](PATCHES.md) for active differences from upstream.
 

@@ -1,7 +1,7 @@
 # FastMigrate downstream
 
-This private repository is the canonical source for the Pages CMS build used
-by FastMigrate. It preserves the complete public upstream history while keeping
+This public fork is the canonical source for the Pages CMS build used by
+FastMigrate. It preserves the complete upstream relationship while keeping
 FastMigrate release work and operational patches separate from customer sites
 and infrastructure secrets.
 
@@ -60,7 +60,6 @@ migrations require a backup and an explicit rollout review.
 
 ## Upstream contributions
 
-Generic fixes should be proposed to upstream. Because the canonical downstream
-is private, create or reuse a separate public GitHub fork only as the transport
-for those pull requests. Remove a downstream patch after an approved upstream
-release contains the equivalent behavior and the release passes our smoke.
+Generic fixes should be proposed directly from a focused branch in this public
+fork. Remove a downstream patch after an approved upstream release contains the
+equivalent behavior and the release passes our smoke.
