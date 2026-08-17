@@ -44,6 +44,20 @@ configuration belong in this repository.
 Updates are proposed automatically but never deployed automatically. Database
 migrations require a backup and an explicit rollout review.
 
+## Dependency security
+
+- Dependabot proposes grouped minor and patch updates against the active
+  default release branch. Major upgrades remain explicit maintenance work.
+- CI rejects high or critical production dependency advisories with
+  `npm audit --omit=dev --audit-level=high`.
+- Tooling advisories are reviewed separately because `drizzle-kit` currently
+  reports a moderate `esbuild` advisory whose suggested automated fix is a
+  breaking downgrade. The deployed image currently retains `drizzle-kit` for
+  migrations, but it never starts the affected development server.
+- Security updates pass the same test, lint, build, database, and authenticated
+  smoke gates as upstream version updates. They are never auto-merged or
+  auto-deployed.
+
 ## Upstream contributions
 
 Generic fixes should be proposed to upstream. Because the canonical downstream
