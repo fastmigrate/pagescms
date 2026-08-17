@@ -18,6 +18,7 @@ const releaseBranch = settings.defaultBranch.replace(
   upstreamVersion,
 );
 const mode = process.argv[2] ?? "--check";
+const retrySignal = new Int32Array(new SharedArrayBuffer(4));
 
 function fail(message) {
   console.error(`Repository settings error: ${message}`);
@@ -58,17 +59,29 @@ function githubApi(path, { method = "GET", body } = {}) {
     path,
   ];
   if (body !== undefined) args.push("--input", "-");
-  const result = spawnSync("gh", args, {
-    cwd: root,
-    encoding: "utf8",
-    input: body === undefined ? undefined : JSON.stringify(body),
-  });
-  if (result.error) fail(`could not start gh: ${result.error.message}`);
-  if (result.status !== 0) {
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    const result = spawnSync("gh", args, {
+      cwd: root,
+      encoding: "utf8",
+      input: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (result.error) fail(`could not start gh: ${result.error.message}`);
+    if (result.status === 0) {
+      return result.stdout.trim() ? JSON.parse(result.stdout) : null;
+    }
+
     const detail = (result.stderr || result.stdout).trim();
-    fail(`${method} ${path} failed${detail ? `: ${detail}` : ""}`);
+    const transient = /\(HTTP (?:502|503|504)\)/.test(detail);
+    if (!transient || attempt === 5) {
+      fail(`${method} ${path} failed${detail ? `: ${detail}` : ""}`);
+    }
+    const delayMs = attempt * 2_000;
+    console.warn(
+      `${method} ${path} returned a transient GitHub error; retrying in ${delayMs / 1_000}s (${attempt}/5).`,
+    );
+    Atomics.wait(retrySignal, 0, 0, delayMs);
   }
-  return result.stdout.trim() ? JSON.parse(result.stdout) : null;
+  fail(`${method} ${path} exhausted retries`);
 }
 
 function protectionBody(requiredStatusChecks) {

@@ -25,9 +25,10 @@ npm run repo:settings:check
 ```
 
 Both commands are idempotent. `--apply` uses convergent PUT/PATCH operations
-and verifies the result; `--check` is read-only and reports drift. CI runs the
-offline schema check, while authenticated infrastructure recovery runs the
-live reconciliation. No token or organization credential is stored here.
+and verifies the result; transient GitHub 502/503/504 responses receive bounded
+automatic retries. `--check` is read-only and reports drift. CI runs the offline
+schema check, while authenticated infrastructure recovery runs the live
+reconciliation. No token or organization credential is stored here.
 
 ## Branch and release policy
 
