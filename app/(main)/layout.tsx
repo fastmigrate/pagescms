@@ -8,6 +8,8 @@ import { GithubAuthExpired } from "@/components/github-auth-expired";
 import { isGithubAuthError } from "@/lib/github-auth";
 import { invalidateSessionForGithubAuthError } from "@/lib/github-auth-server";
 import { hasAdminAccess } from "@/lib/admin";
+import { GithubServiceUnavailable } from "@/components/github-service-unavailable";
+import { isGithubServiceUnavailableError } from "@/lib/github-service-unavailable";
 
 export default async function Layout({
   children,
@@ -30,6 +32,9 @@ export default async function Layout({
     if (isGithubAuthError(error)) {
       await invalidateSessionForGithubAuthError(session);
       return <GithubAuthExpired />;
+    }
+    if (isGithubServiceUnavailableError(error)) {
+      return <GithubServiceUnavailable />;
     }
     throw error;
   }

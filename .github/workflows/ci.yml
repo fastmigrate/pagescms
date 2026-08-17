@@ -1,0 +1,30 @@
+name: Downstream CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "fastmigrate/**"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BASE_URL: https://cms.example.invalid
+      BETTER_AUTH_SECRET: build-time-dummy-not-used-at-runtime
+      CRYPTO_KEY: build-time-dummy-not-used-at-runtime
+      DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run lint
+      - run: npm run build --ignore-scripts

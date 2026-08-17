@@ -10,6 +10,7 @@ import { getGithubAccount } from "@/lib/github-account";
 import { requireGithubUserToken } from "@/lib/authz-server";
 import { hasGithubIdentity } from "@/lib/authz-shared";
 import { collaboratorMatchesUser } from "@/lib/collaborator-access";
+import { toGithubServiceUnavailableError } from "@/lib/github-service-unavailable";
 
 const getAccounts = async (user: User) => {
 	let accounts: Array<{
@@ -23,7 +24,14 @@ const getAccounts = async (user: User) => {
 	if (githubAccount?.accessToken && hasGithubIdentity(user)) {
 		const token = await requireGithubUserToken(user);
 		
-		const installations = await getInstallations(token);
+		let installations;
+		try {
+			installations = await getInstallations(token);
+		} catch (error) {
+			const serviceUnavailableError = toGithubServiceUnavailableError(error);
+			if (serviceUnavailableError) throw serviceUnavailableError;
+			throw error;
+		}
 
 		accounts = [
 			...installations.map((installation: any) => ({
