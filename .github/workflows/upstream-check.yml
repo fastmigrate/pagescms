@@ -1,0 +1,66 @@
+name: Upstream release check
+
+on:
+  schedule:
+    - cron: "17 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        name: Compare approved and latest upstream tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          current="$(tr -d '[:space:]' < .fastmigrate/upstream-version)"
+          latest="$(
+            git ls-remote --tags --refs https://github.com/hunvreus/pagescms.git \
+              | awk -F/ '{print $3}' \
+              | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -V \
+              | tail -n 1
+          )"
+          test -n "$latest"
+          printf 'current=%s\nlatest=%s\n' "$current" "$latest"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          if [[ "$current" != "$latest" ]]; then
+            echo "outdated=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "outdated=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Open a single update issue
+        if: steps.version.outputs.outdated == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_VERSION: ${{ steps.version.outputs.current }}
+          LATEST_VERSION: ${{ steps.version.outputs.latest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          title="Update Pages CMS upstream to ${LATEST_VERSION}"
+          existing="$(
+            gh issue list \
+              --repo "$GITHUB_REPOSITORY" \
+              --state open \
+              --search "${title} in:title" \
+              --json title \
+              --jq ".[] | select(.title == \"${title}\") | .title" \
+              | head -n 1
+          )"
+          if [[ -n "$existing" ]]; then
+            echo "An update issue already exists."
+            exit 0
+          fi
+          gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$title" \
+            --body "FastMigrate currently approves ${CURRENT_VERSION}; upstream publishes ${LATEST_VERSION}. Follow DOWNSTREAM.md, review migrations and active patches, and never deploy this update automatically."

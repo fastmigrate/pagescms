@@ -1,5 +1,9 @@
 # Pages CMS
 
+> This repository is the private FastMigrate downstream. See
+> [DOWNSTREAM.md](DOWNSTREAM.md) for its update and release policy and
+> [PATCHES.md](PATCHES.md) for active differences from upstream.
+
 [Pages CMS](https://pagescms.org) is an open source CMS for GitHub repositories. It is especially well suited for static sites and content-driven apps built with tools like Jekyll, Hugo, Next.js, Astro, VuePress, and similar stacks.
 
 You can use the hosted version directly at [app.pagescms.org](https://app.pagescms.org), or run your own local development copy from this repository.
