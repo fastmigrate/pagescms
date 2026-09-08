@@ -10,11 +10,13 @@ import { Ban, ImageOff, Loader } from "lucide-react";
 export function Thumbnail({
   name,
   path,
-  className
+  className,
+  fit = "cover"
 }: {
   name: string,
   path: string | null;
   className?: string;
+  fit?: "cover" | "contain";
 }) {
   const [rawUrl, setRawUrl] = useState<string | null>(null);
   const [error, setError] = useState(null);
@@ -56,7 +58,7 @@ export function Thumbnail({
               src={rawUrl}
               alt={path.split("/").pop() || "thumbnail"}
               loading="lazy"
-              className="absolute inset-0 w-full h-full object-cover"
+              className={cn("absolute inset-0 w-full h-full", fit === "contain" ? "object-contain" : "object-cover")}
             />
           : error
             ? <div className="flex justify-center items-center absolute inset-0 text-muted-foreground" title={error}>
