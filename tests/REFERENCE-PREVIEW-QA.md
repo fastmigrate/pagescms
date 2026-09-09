@@ -44,3 +44,12 @@ Four moderate audit entries remain in the legacy Drizzle/esbuild dependency
 chain; no high or critical entries remain in either full or production audit.
 The security gate is unchanged. Merge/deployment and hosted verification are
 separate from these local and PR checks.
+
+## Off-screen loading regression — 2026-09-09
+
+Reference image wrappers reserve their square layout and mount Thumbnail only
+when IntersectionObserver reports them near the visible area. A browser fixture
+with 100 options in distinct image directories made one media request for the
+saved selection and four total after initially opening the list. Navigating to
+work 10 loaded only the newly approached region (16 total), preserving selection
+ID `id-10`. The previous eager mounting would resolve all 100 directories.

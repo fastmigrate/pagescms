@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Thumbnail } from "@/components/thumbnail";
 import { referenceImage, type ReferenceImage } from "./image-preview";
 import { Loader } from "lucide-react";
@@ -74,17 +74,34 @@ const normalizeSelected = (input: any, options: Option[], multiple: boolean) => 
   return normalizeOne(input);
 };
 
-const OptionImage = ({ option }: { option: Option }) => (
-  <div className="w-24 shrink-0" aria-hidden="true">
-    <Thumbnail
-      key={`${option.image?.media}:${option.image?.path}`}
-      name={option.image?.media || ""}
-      path={option.image?.path || null}
-      fit="contain"
-      className="rounded-md"
-    />
-  </div>
-);
+const OptionImage = ({ option }: { option: Option }) => {
+  const container = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const element = container.current;
+    if (!element) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setVisible(true);
+        observer.disconnect();
+      }
+    }, { rootMargin: "128px" });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={container} className="w-24 aspect-square shrink-0 rounded-md bg-muted" aria-hidden="true">
+      {visible && <Thumbnail
+        key={`${option.image?.media}:${option.image?.path}`}
+        name={option.image?.media || ""}
+        path={option.image?.path || null}
+        fit="contain"
+        className="rounded-md"
+      />}
+    </div>
+  );
+};
 
 const EditComponent = (props: any) => {
   const { value, field, onChange } = props;
