@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Thumbnail } from "@/components/thumbnail";
+import { referenceImage, type ReferenceImage } from "./image-preview";
 import { Loader } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -23,13 +25,16 @@ type Option = {
   value: string;
   label: string;
   resolved?: boolean;
+  image?: ReferenceImage | null;
 };
 
 const optionsEqual = (a: Option[], b: Option[]) =>
   a.length === b.length && a.every((item, index) =>
     item.value === b[index]?.value &&
     item.label === b[index]?.label &&
-    item.resolved === b[index]?.resolved
+    item.resolved === b[index]?.resolved &&
+    item.image?.path === b[index]?.image?.path &&
+    item.image?.media === b[index]?.image?.media
   );
 
 const normalizeInputValues = (input: any, multiple: boolean): string[] => {
@@ -69,6 +74,18 @@ const normalizeSelected = (input: any, options: Option[], multiple: boolean) => 
   return normalizeOne(input);
 };
 
+const OptionImage = ({ option }: { option: Option }) => (
+  <div className="w-24 shrink-0" aria-hidden="true">
+    <Thumbnail
+      key={`${option.image?.media}:${option.image?.path}`}
+      name={option.image?.media || ""}
+      path={option.image?.path || null}
+      fit="contain"
+      className="rounded-md"
+    />
+  </div>
+);
+
 const EditComponent = (props: any) => {
   const { value, field, onChange } = props;
   const { config } = useConfig();
@@ -83,6 +100,8 @@ const EditComponent = (props: any) => {
   const searchFields = typeof field.options?.search === "string" ? field.options.search : "name";
   const valueTemplate = typeof field.options?.value === "string" ? field.options.value : "{path}";
   const labelTemplate = typeof field.options?.label === "string" ? field.options.label : "{name}";
+
+  const imageField = typeof field.options?.image === "string" ? field.options.image : "";
 
   const [searchTerm, setSearchTerm] = useState("");
   const [options, setOptions] = useState<Option[]>([]);
@@ -101,6 +120,7 @@ const EditComponent = (props: any) => {
         searchFields,
         valueTemplate,
         labelTemplate,
+        imageField,
       });
 
       try {
@@ -115,6 +135,7 @@ const EditComponent = (props: any) => {
           value: String(item.value ?? ""),
           label: String(item.label ?? item.value ?? ""),
           resolved: true,
+          image: referenceImage(item.image?.path, item.image?.media),
         }));
         setOptions((previous) => optionsEqual(previous, nextOptions) ? previous : nextOptions);
       } catch (error) {
@@ -136,6 +157,7 @@ const EditComponent = (props: any) => {
     searchFields,
     valueTemplate,
     labelTemplate,
+    imageField,
   ]);
 
   const selectedValues = useMemo(
@@ -164,6 +186,7 @@ const EditComponent = (props: any) => {
       const searchParams = new URLSearchParams({
         valueTemplate,
         labelTemplate,
+        imageField,
       });
       selectedValuesForRequest.forEach((selectedValue) => {
         searchParams.append("value", selectedValue);
@@ -181,6 +204,7 @@ const EditComponent = (props: any) => {
           value: String(item.value ?? ""),
           label: String(item.label ?? item.value ?? ""),
           resolved: true,
+          image: referenceImage(item.image?.path, item.image?.media),
         }));
         setSelectedOptions((previous) => optionsEqual(previous, nextSelectedOptions) ? previous : nextSelectedOptions);
       } catch (error) {
@@ -200,6 +224,7 @@ const EditComponent = (props: any) => {
     selectedValuesKey,
     valueTemplate,
     labelTemplate,
+    imageField,
   ]);
 
   const mergedOptions = useMemo(() => {
@@ -243,7 +268,14 @@ const EditComponent = (props: any) => {
       multiple={multiple}
       value={selectedValue as any}
       onValueChange={handleValueChange as any}
-      onInputValueChange={isReadonly ? undefined : setSearchTerm}
+      onInputValueChange={isReadonly ? undefined : (input, details) => {
+        // Resolving a saved label also changes the input. Only actual search
+        // input should filter the choices; reopening must show the collection.
+        if (["input-change", "input-clear", "clear-press"].includes(details.reason)) {
+          setSearchTerm(input);
+        }
+      }}
+      onOpenChange={(open) => { if (!open) setSearchTerm(""); }}
       readOnly={isReadonly}
       isItemEqualToValue={(item, selected) => item.value === selected?.value}
       autoHighlight
@@ -288,7 +320,10 @@ const EditComponent = (props: any) => {
             )}
             <ComboboxList>
               {(option: Option) => (
-                <ComboboxItem key={option.value} value={option}>{option.label}</ComboboxItem>
+                <ComboboxItem key={option.value} value={option}>
+                  {imageField && <OptionImage option={option} />}
+                  <span className="min-w-0 whitespace-normal break-words">{option.label}</span>
+                </ComboboxItem>
               )}
             </ComboboxList>
           </ComboboxContent>
@@ -304,6 +339,12 @@ const EditComponent = (props: any) => {
             showTrigger={!isReadonly}
             readOnly={isReadonly}
           />
+          {imageField && singleSelected && (
+            <div className="mt-2 flex items-center gap-3 rounded-md border p-2">
+              <OptionImage option={singleSelected} />
+              <span className="min-w-0 text-sm break-words">{singleSelected.label}</span>
+            </div>
+          )}
           <ComboboxContent>
             {!isLoading && <ComboboxEmpty>No options found.</ComboboxEmpty>}
             {isLoading && (
@@ -314,7 +355,10 @@ const EditComponent = (props: any) => {
             )}
             <ComboboxList>
               {(option: Option) => (
-                <ComboboxItem key={option.value} value={option}>{option.label}</ComboboxItem>
+                <ComboboxItem key={option.value} value={option}>
+                  {imageField && <OptionImage option={option} />}
+                  <span className="min-w-0 whitespace-normal break-words">{option.label}</span>
+                </ComboboxItem>
               )}
             </ComboboxList>
           </ComboboxContent>
