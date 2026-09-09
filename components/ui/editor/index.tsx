@@ -1,3 +1,4 @@
+import { toast } from "sonner";
 import { type HTMLAttributes, useEffect, useRef, useState } from "react";
 import type { Editor as TiptapEditor } from "@tiptap/core";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
@@ -717,10 +718,12 @@ export function Editor({
 
       cleanupUpload(uploadId, { revokeBlob: true });
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Upload failed";
+      toast.error(`${file.name}: ${message}`);
       finalizeImageUpload(uploadId, (attrs) => ({
         ...attrs,
         uploading: false,
-        uploadError: error instanceof Error ? error.message : "Upload failed",
+        uploadError: message,
       }));
       cleanupUpload(uploadId, { revokeBlob: false });
     }
