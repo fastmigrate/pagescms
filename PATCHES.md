@@ -12,7 +12,8 @@ active FastMigrate release branch.
 | FM-004 | Active | Collection images | Optional small/medium/large thumbnails and contain fit make image-led collections recognizable while retaining compact defaults. | Upstream supports equivalent per-image-field collection display options. |
 | FM-005 | Active | Reference images | Optional image previews identify entries in reference choices and the selected single reference. | Upstream supports equivalent image-field previews in reference editors. |
 
-| FM-006 | Active | Collection sort presets | Named multi-field ordering aligns collection lists with website ordering without stored computed fields. | Upstream supports equivalent named multi-field collection sort presets. |
+| FM-006 | Active | Upload errors | Reject files above 7.5 MB before encoding and return explicit bounded-request errors before GitHub writes. | Upstream provides equivalent client and server upload validation. |
+| FM-007 | Active | Collection sort presets | Named multi-field ordering aligns collection lists with website ordering without stored computed fields. | Upstream supports equivalent named multi-field collection sort presets. |
 
 Each active patch must remain a separate commit, include proportionate tests,
 and avoid customer- or infrastructure-specific configuration.
@@ -48,7 +49,7 @@ incompatible Drizzle Kit downgrade and is deliberately not applied.
 
 ## Named collection sort presets
 
-FM-006 adds opt-in `view.sortPresets` and `view.default.sortPreset`:
+FM-007 adds opt-in `view.sortPresets` and `view.default.sortPreset`:
 
 ```yaml
 view:
@@ -88,3 +89,23 @@ Column sorting remains available; the selector displays Column sorting until a
 preset is restored. Presets do not filter drafts, reorder content files or write
 computed fields. Leave presets unset to retain the previous UI. See
 `tests/COLLECTION-SORT-QA.md` for validation and rollout boundaries.
+
+## Bounded uploads
+
+Uploads have an explicit decimal 7.5 MB (7,500,000 byte) per-file limit. Both
+media picker/drop-zone uploads and rich-text image uploads reject oversized
+files before FileReader/base64 encoding. The original bytes are preserved for
+accepted files.
+
+The file API limits JSON requests to 10 MiB and validates decoded media size
+before writing to GitHub. Oversized requests return JSON HTTP 413; incomplete
+JSON returns HTTP 400. These routes bypass Next's body-cloning proxy so its
+implicit truncation cannot preempt the bounded reader. POST and DELETE enforce
+the same-origin check in the route itself, alongside existing authentication
+and repository authorization. Other API routes retain the proxy.
+
+`tests/upload-limits.test.mts` covers exact byte boundaries, valid maximum-size
+JSON, chunked bodies and cancellation, malformed requests, Next's actual
+matcher, same-origin checks, and the actual file route refusing unsafe inputs
+without GitHub writes. This downstream self-hosted limit does not increase a
+hosting provider's separate request limit (for example Vercel).

@@ -8,6 +8,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { assertUploadSize } from "@/lib/upload-limits";
+import { requireApiSuccess } from "@/lib/api-client";
 import { useFormContext } from "react-hook-form";
 import { createPortal } from "react-dom";
 import { Editor, type ImagePickerContext } from "@/components/ui/editor";
@@ -759,6 +761,7 @@ const EditComponent = forwardRef(
     const handleUploadImage = useCallback(
       async (file: File) => {
         if (!config || !mediaConfig) return null;
+        assertUploadSize(file.size);
 
         const extension = getFileExtension(file.name);
         if (
@@ -801,16 +804,10 @@ const EditComponent = forwardRef(
             }),
           },
         );
-        if (!response.ok) {
-          throw new Error(
-            `Failed to upload file: ${response.status} ${response.statusText}`,
-          );
-        }
-
-        const payload = (await response.json()) as ApiResponse<FileSaveData>;
-        if (payload.status !== "success") {
-          throw new Error(payload.message);
-        }
+        const payload = await requireApiSuccess<ApiResponse<FileSaveData>>(
+          response, "Failed to upload file",
+        );
+        if (payload.status !== "success") throw new Error(payload.message);
 
         const uploadedPath = payload.data.path || targetPath;
         const src = await toDisplayImageUrl(uploadedPath);
