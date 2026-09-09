@@ -4,6 +4,7 @@ import { useRef, cloneElement, useMemo, useCallback, createContext, useContext, 
 import { useConfig } from "@/contexts/config-context";
 import { getUploadFileName, joinPathSegments } from "@/lib/utils/file";
 import { toast } from "sonner";
+import { assertUploadSize } from "@/lib/upload-limits";
 import { getSchemaByName } from "@/lib/schema";
 import { cn } from "@/lib/utils";
 import { requireApiSuccess } from "@/lib/api-client";
@@ -66,6 +67,10 @@ function MediaUploadRoot({ children, path, onUpload, media, extensions, multiple
   const handleFiles = useCallback(async (files: File[]) => {
     try {
       for (const file of files) {
+        try { assertUploadSize(file.size); } catch (error) {
+          toast.error(`${file.name}: ${(error as Error).message}`);
+          continue;
+        }
         const uploadFilename = getUploadFileName(
           file.name,
           rename ?? configMedia?.rename,

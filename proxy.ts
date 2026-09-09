@@ -43,5 +43,7 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-	matcher: "/:path*"
+	// File write routes enforce origin and streaming limits themselves.
+	// Exclude them before Next clones/truncates their request bodies.
+	matcher: "/((?!api/[^/]+/[^/]+/[^/]+/files/).*)"
 }
