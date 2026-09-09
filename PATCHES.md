@@ -13,6 +13,7 @@ active FastMigrate release branch.
 | FM-005 | Active | Reference images | Optional image previews identify entries in reference choices and the selected single reference. | Upstream supports equivalent image-field previews in reference editors. |
 
 | FM-006 | Active | Upload errors | Reject files above 7.5 MB before encoding and return explicit bounded-request errors before GitHub writes. | Upstream provides equivalent client and server upload validation. |
+| FM-007 | Active | Collection sort presets | Named multi-field ordering aligns collection lists with website ordering without stored computed fields. | Upstream supports equivalent named multi-field collection sort presets. |
 
 Each active patch must remain a separate commit, include proportionate tests,
 and avoid customer- or infrastructure-specific configuration.
@@ -45,6 +46,49 @@ to 0.35.4, and patched build-tool dependencies. The CI audit threshold remains
 `--omit=dev --audit-level=high`. Four moderate advisories remain in the legacy
 Drizzle Kit -> @esbuild-kit -> esbuild chain; npm's proposed forced fix is an
 incompatible Drizzle Kit downgrade and is deliberately not applied.
+
+## Named collection sort presets
+
+FM-007 adds opt-in `view.sortPresets` and `view.default.sortPreset`:
+
+```yaml
+view:
+  fields: [title, year, order, category]
+  sortPresets:
+    - name: website
+      label: Website order
+      fields:
+        - field: category
+          order: asc
+          values: [solo, group]
+        - field: year
+          order: desc
+        - field: order
+          order: asc
+        - field: id
+          order: asc
+  default:
+    sortPreset: website
+```
+
+Rules reference existing scalar fields, including nested or hidden fields. They
+are evaluated in order. Numbers compare numerically; text uses localeCompare.
+Optional `values` defines an explicit order using stored field values; the
+comparator applies the same read transform as the collection API (including
+custom date formats). Unlisted values follow listed values. Missing/null/empty values always follow populated values. File path is
+the final tie breaker; configure a stable ID when the website uses one. Folders
+follow `view.foldersFirst`; tree presets sort siblings, not across parents.
+
+A named preset cannot coexist with `default.sort`/`default.order`. Duplicate
+names/fields/values and unknown or non-scalar paths are configuration errors.
+Multiple-select fields are non-scalar. Components are resolved through their
+inheritance chain, including options; missing/cyclic references are rejected.
+Explicit ordered values must match the stored primitive type: number, boolean,
+or string (including single-select values).
+Column sorting remains available; the selector displays Column sorting until a
+preset is restored. Presets do not filter drafts, reorder content files or write
+computed fields. Leave presets unset to retain the previous UI. See
+`tests/COLLECTION-SORT-QA.md` for validation and rollout boundaries.
 
 ## Bounded uploads
 

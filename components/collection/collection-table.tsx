@@ -13,6 +13,7 @@ import {
   ExpandedState,
   Row
 } from "@tanstack/react-table"
+import { presetColumnId, type SortPreset } from "@/lib/collection-sort";
 import { Button } from "@/components/ui/button";
 import {
   Pagination,
@@ -74,7 +75,8 @@ export function CollectionTable<TData extends TableData>({
   pathname,
   path,
   isTree = false,
-  primaryField
+  primaryField,
+  sortPresets = [],
 }: {
   columns: any[],
   data: Record<string, any>[],
@@ -85,7 +87,8 @@ export function CollectionTable<TData extends TableData>({
   pathname: string,
   path: string,
   isTree?: boolean,
-  primaryField?: string
+  primaryField?: string,
+  sortPresets?: SortPreset[],
 }) {
   const [expanded, setExpanded] = useState<ExpandedState>({});
   
@@ -143,6 +146,12 @@ export function CollectionTable<TData extends TableData>({
     onExpandedChange: setExpanded,
   });
 
+  const sorting = table.getState().sorting;
+  const activePreset = sorting.length === 1 && !sorting[0].desc
+    ? sortPresets.find(preset => presetColumnId(preset.name) === sorting[0].id)?.name ?? ''
+    : '';
+  const visibleColumnCount = table.getVisibleLeafColumns().length;
+
   const currentPage = table.getState().pagination.pageIndex;
   const pageCount = table.getPageCount();
 
@@ -186,6 +195,24 @@ export function CollectionTable<TData extends TableData>({
 
   return (
     <div className="space-y-2">
+      {sortPresets.length > 0 && (
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 text-sm">
+            <span>Sort order</span>
+            <select
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-ring"
+              value={activePreset}
+              onChange={event => {
+                table.setSorting([{ id: presetColumnId(event.target.value), desc: false }]);
+                table.setPageIndex(0);
+              }}
+            >
+              <option value="" disabled>Column sorting</option>
+              {sortPresets.map(preset => <option key={preset.name} value={preset.name}>{preset.label}</option>)}
+            </select>
+          </label>
+        </div>
+      )}
       <Table className="border-separate border-spacing-0 text-sm">
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
@@ -235,7 +262,7 @@ export function CollectionTable<TData extends TableData>({
                   row.original.type === "dir"
                     ? <>
                       <TableCell
-                        colSpan={columns.length - 1}
+                        colSpan={visibleColumnCount - 1}
                         className="p-2 border-b py-0 h-12"
                         style={{
                           paddingLeft: row.depth > 0
@@ -315,7 +342,7 @@ export function CollectionTable<TData extends TableData>({
             ))
           ) : (
             <TableRow className="hover:bg-transparent">
-              <TableCell colSpan={columns.length} className="text-center text-muted-foreground text-sm p-6">
+              <TableCell colSpan={visibleColumnCount} className="text-center text-muted-foreground text-sm p-6">
                 <span>No entries</span>
               </TableCell>
             </TableRow>

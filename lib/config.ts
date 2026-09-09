@@ -380,15 +380,17 @@ const normalizeContentEntries = (
 };
 
 // Helper function to resolve component references in fields
-function resolveComponent(field: any, componentsMap: Record<string, any>): any {
+function resolveComponent(field: any, componentsMap: Record<string, any>, seen = new Set<string>()): any {
   let result = JSON.parse(JSON.stringify(field));
 
   if (result.component && typeof result.component === "string") {
     const componentKey = result.component;
-    const componentDef = componentsMap[componentKey];
+    if (seen.has(componentKey)) throw new Error(`Circular component reference "${componentKey}".`);
+    const componentDef = Object.hasOwn(componentsMap, componentKey) ? componentsMap[componentKey] : undefined;
 
     if (componentDef) {
-      const componentCopy = JSON.parse(JSON.stringify(componentDef));
+      seen = new Set([...seen, componentKey]);
+      const componentCopy = resolveComponent(componentDef, componentsMap, seen);
       const originalName = result.name;
       const componentType = componentCopy.type;
       delete result.component;
@@ -424,14 +426,14 @@ function resolveComponent(field: any, componentsMap: Record<string, any>): any {
   // Nested fields
   if (Array.isArray(result.fields)) {
     result.fields = result.fields.map((nestedField: any) => {
-      return resolveComponent(nestedField, componentsMap);
+      return resolveComponent(nestedField, componentsMap, seen);
     });
   }
 
   // Nested blocks
   if (Array.isArray(result.blocks)) {
     result.blocks = result.blocks.map((block: any) => {
-      return resolveComponent(block, componentsMap);
+      return resolveComponent(block, componentsMap, seen);
     });
   }
 
