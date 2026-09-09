@@ -84,3 +84,12 @@ component types. Preset requests use the explicit `fields.` API prefix.
 JSON parsing, collection route loading and final comparison with synthetic data.
 All three regression cases fail against the previous code and pass with the
 fixes. The full suite now contains 36 passing tests. No customer data is included.
+
+## Review round 3: explicit date values
+
+Finding 3969167083 identified that custom date storage formats differ from the
+ISO values returned by the collection API. Comparator columns now read explicit
+preset values through the same field read function as collection data, using a
+copy of the preset. The real-API fixture covers date-only and date-time custom
+formats and verifies that the original configuration is unchanged. The new
+regression fails when value transformation is removed. Full suite: 37 tests.

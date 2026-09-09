@@ -21,7 +21,7 @@ import {
   normalizePath,
   sortFiles,
 } from "@/lib/utils/file";
-import { viewComponents } from "@/fields/registry";
+import { viewComponents, readFns } from "@/fields/registry";
 import { getSchemaActions } from "@/lib/actions";
 import {
   getSchemaByName,
@@ -653,7 +653,12 @@ export function Collection({ name, path }: { name: string; path?: string }) {
       enableSorting: false,
     });
 
-    tableColumns.push(...presetColumns(schema.view?.sortPresets, schema.view?.foldersFirst));
+    tableColumns.push(...presetColumns(schema.view?.sortPresets, schema.view?.foldersFirst, (value, fieldPath) => {
+      const field = getFieldByPath(schema.fields ?? [], fieldPath);
+      const read = field?.type ? readFns[field.type] : undefined;
+      const transformed = read && field ? read(value, field, config?.object) : undefined;
+      return transformed === undefined ? value : transformed;
+    }));
     return tableColumns;
   }, [
     config.owner,
@@ -665,6 +670,8 @@ export function Collection({ name, path }: { name: string; path?: string }) {
     handleDelete,
     handleRename,
     schema.view?.sortPresets,
+    schema.fields,
+    config.object,
     schema.view?.foldersFirst,
     schema.view?.layout,
     schema.view?.node?.filename,

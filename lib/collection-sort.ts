@@ -62,11 +62,24 @@ export function comparePresetEntries(a: SortEntry, b: SortEntry, preset: SortPre
   return a.path.localeCompare(b.path);
 }
 
-export function presetColumns(presets: SortPreset[] = [], foldersFirst = false) {
-  return presets.map(preset => ({
-    id: presetColumnId(preset.name),
-    accessorFn: () => true,
-    enableGlobalFilter: false,
-    sortingFn: (a: { original: SortEntry }, b: { original: SortEntry }) => comparePresetEntries(a.original, b.original, preset, foldersFirst),
-  }));
+export function presetColumns(
+  presets: SortPreset[] = [],
+  foldersFirst = false,
+  readValue: (value: string | number | boolean, fieldPath: string) => unknown = value => value,
+) {
+  return presets.map(storedPreset => {
+    const preset = {
+      ...storedPreset,
+      fields: storedPreset.fields.map(rule => ({
+        ...rule,
+        values: rule.values?.map(value => readValue(value, rule.field)) as typeof rule.values,
+      })),
+    };
+    return {
+      id: presetColumnId(preset.name),
+      accessorFn: () => true,
+      enableGlobalFilter: false,
+      sortingFn: (a: { original: SortEntry }, b: { original: SortEntry }) => comparePresetEntries(a.original, b.original, preset, foldersFirst),
+    };
+  });
 }

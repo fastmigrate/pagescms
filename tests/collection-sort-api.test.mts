@@ -46,6 +46,7 @@ function fixture(raw: any) {
     new Function("require", "module", "exports", code)(require, loadedModule, loadedModule.exports);
     return loadedModule.exports;
   }
+  registry.readFns.date = load(resolve(root, "fields/core/date/index.ts")).read;
   const { normalizeConfig } = load(resolve(root, "lib/config.ts"));
   const { ConfigSchema } = load(resolve(root, "lib/config-schema.ts"));
   const validation = ConfigSchema.safeParse(raw);
@@ -54,6 +55,12 @@ function fixture(raw: any) {
   const schema = config.object.content[0];
   const { GET } = load(resolve(root, "app/api/[owner]/[repo]/[branch]/collections/[name]/route.ts"));
   return {
+    columns: (presets: any[]) => presetColumns(presets, false, (value, path) => {
+      const {getFieldByPath} = load(resolve(root, "lib/schema.ts"));
+      const field = getFieldByPath(schema.fields, path);
+      const transformed = registry.readFns[field.type]?.(value,field,config.object);
+      return transformed === undefined ? value : transformed;
+    }),
     schema, config, deny: () => { denied = true; }, reads: () => reads,
     setEntries: (values: any[]) => { entries = values.map((value, index) => ({ type: "file", path: `content/works/${index}.json`, name: `${index}.json`, content: JSON.stringify(value) })); },
     request: (params: Record<string, string> = {}, name = "works") => GET(
@@ -64,7 +71,7 @@ function fixture(raw: any) {
 }
 
 
-import { comparePresetEntries, presetRequestFields } from '../lib/collection-sort.ts';
+import { comparePresetEntries, presetRequestFields, presetColumns } from '../lib/collection-sort.ts';
 
 test('normalization and collection loading resolve reverse-declared deep component chains', async () => {
   const preset: any = {name:'rank',label:'Rank',fields:[{field:'meta.rank',order:'asc'}]};
@@ -86,5 +93,22 @@ test('reserved content paths survive request prefixes and sort by their values',
     const sorted = result.data.contents.sort((a:any,b:any)=>comparePresetEntries(a,b,preset));
     assert.equal(sorted[0].path,'content/works/1.json');
     assert.equal(sorted[0].fields[field === 'path' ? 'path' : 'fields'] instanceof Object, field !== 'path');
+  }
+});
+
+
+test('explicit date order uses the same read transform as collection values', async () => {
+  for (const options of [{format:'dd/MM/yyyy'}, {format:'dd/MM/yyyy HH:mm',time:true}]) {
+    const suffix = options.time ? ' 15:30' : '';
+    const dates = ['02/01/2026'+suffix,'01/01/2026'+suffix];
+    const preset: any = {name:'dates',label:'Dates',fields:[{field:'date',order:'asc',values:dates}]};
+    const f = fixture({content:[{name:'works',type:'collection',path:'content/works',format:'json',filename:'{primary}.json',fields:[{name:'date',type:'date',options}],view:{sortPresets:[preset]}}]});
+    f.setEntries([{date:dates[1]},{date:dates[0]}]);
+    const result = await (await f.request({fields:['path',...presetRequestFields([preset])].join(',')})).json();
+    const [column] = f.columns([preset]);
+    const ordered = result.data.contents.sort((a:any,b:any)=>column.sortingFn({original:a},{original:b}));
+    assert.equal(ordered[0].path,'content/works/1.json');
+    assert.match(ordered[0].fields.date,/^2026-01-02/);
+    assert.deepEqual(preset.fields[0].values,dates,'stored configuration is not mutated');
   }
 });

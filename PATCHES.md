@@ -72,8 +72,9 @@ view:
 
 Rules reference existing scalar fields, including nested or hidden fields. They
 are evaluated in order. Numbers compare numerically; text uses localeCompare.
-Optional `values` defines an explicit value order; unlisted values follow listed
-values. Missing/null/empty values always follow populated values. File path is
+Optional `values` defines an explicit order using stored field values; the
+comparator applies the same read transform as the collection API (including
+custom date formats). Unlisted values follow listed values. Missing/null/empty values always follow populated values. File path is
 the final tie breaker; configure a stable ID when the website uses one. Folders
 follow `view.foldersFirst`; tree presets sort siblings, not across parents.
 
