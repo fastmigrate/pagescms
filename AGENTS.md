@@ -7,8 +7,9 @@ separate branch/worktree when another task owns the current checkout.
 
 ## Required pull request and Codex review loop
 
-Owner instruction, 2026-09-09: PRs and the Codex review loop are the default for
-technical changes in this repository. The owner authorizes pushing scoped
+Owner instruction, 2026-09-09: PRs and the Codex review loop are mandatory for
+technical changes in this repository. Only an explicit owner instruction for
+the specific task can waive them; agents must not invent exceptions. The owner authorizes pushing scoped
 non-secret changes to this repository's configured origin, opening the PR,
 posting `@codex review`, fixing findings, requesting further reviews, and merging
 once the gates below pass. Do not ask for these routine steps again unless the
@@ -27,11 +28,13 @@ owner narrows the scope or a tool explicitly blocks an action.
    Do not dismiss findings merely to finish; document evidence for a justified
    non-fix and obtain reviewer resolution. Do not request repeated unchanged
    reviews hoping that a finding disappears.
-6. Verify required CI and relevant local checks pass on the final head. If the
-   base moves, integrate it and revalidate; request a fresh review if the reviewed
-   diff changes. Review completion without a completed clean verdict is blocked,
+6. Before final review, fetch and integrate the latest target branch, rerun
+   checks, and request review of the resulting head. Immediately before merge,
+   verify that the current target tip is still an ancestor of the reviewed head.
+   If the target advanced, repeat integration, checks, and review. Verify
+   required CI and relevant local checks pass on that final head. Review completion without a completed clean verdict is blocked,
    including exhausted review quota or unavailable review service.
-7. Merge the reviewed head without bypassing branch protection. Verify the merge
+7. Merge with an expected-head guard without bypassing branch protection. Verify the merge
    result and preserve the reviewed/merged SHAs and validation in durable docs.
 
 A local sandbox limitation may defer a build to the equivalent CI job; report
