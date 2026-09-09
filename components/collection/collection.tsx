@@ -32,6 +32,7 @@ import {
 import { requireApiSuccess } from "@/lib/api-client";
 import { EmptyCreate } from "@/components/empty-create";
 import { FileOptions } from "@/components/file/file-options";
+import { presetColumns, presetColumnId, presetFieldPaths } from "@/lib/collection-sort";
 import { CollectionTable } from "./collection-table";
 import { FolderCreate } from "@/components/folder-create";
 import { resolveContentOperations } from "@/lib/operations";
@@ -256,8 +257,9 @@ export function Collection({ name, path }: { name: string; path?: string }) {
   const requestedFieldPaths = useMemo(() => {
     const paths = new Set<string>(["name", "path", primaryField]);
     viewFields.forEach((item: any) => paths.add(item.path));
+    presetFieldPaths(schema.view?.sortPresets).forEach(path => paths.add(path));
     return Array.from(paths);
-  }, [primaryField, viewFields]);
+  }, [primaryField, viewFields, schema.view?.sortPresets]);
 
   const handleTableSearchChange = useCallback((value: string) => {
     setTableSearch(value);
@@ -651,6 +653,7 @@ export function Collection({ name, path }: { name: string; path?: string }) {
       enableSorting: false,
     });
 
+    tableColumns.push(...presetColumns(schema.view?.sortPresets, schema.view?.foldersFirst));
     return tableColumns;
   }, [
     config.owner,
@@ -661,6 +664,7 @@ export function Collection({ name, path }: { name: string; path?: string }) {
     primaryField,
     handleDelete,
     handleRename,
+    schema.view?.sortPresets,
     schema.view?.foldersFirst,
     schema.view?.layout,
     schema.view?.node?.filename,
@@ -681,7 +685,10 @@ export function Collection({ name, path }: { name: string; path?: string }) {
           primaryField;
 
     return {
-      sorting: [
+      columnVisibility: Object.fromEntries((schema.view?.sortPresets ?? []).map((preset: { name: string }) => [presetColumnId(preset.name), false])),
+      sorting: schema.view?.default?.sortPreset
+        ? [{ id: presetColumnId(schema.view.default.sortPreset), desc: false }]
+        : [
         {
           id: sortId,
           desc:
@@ -1017,11 +1024,13 @@ export function Collection({ name, path }: { name: string; path?: string }) {
     </div>
   ) : (
     <CollectionTable
+      key={name}
       columns={columns}
       data={data}
       search={tableSearch}
       setSearch={setTableSearch}
       initialState={initialState}
+      sortPresets={schema.view?.sortPresets}
       onExpand={handleExpand}
       pathname={pathname}
       path={path || schema.path}

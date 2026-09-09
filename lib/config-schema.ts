@@ -5,6 +5,7 @@
  */
 
 import { z } from "zod";
+import { SortPresetSchema } from "./collection-sort";
 import { fieldTypes } from "@/fields/registry";
 
 const ActionSchema = z
@@ -615,6 +616,7 @@ const ContentLeafSchema = z
               },
             )
             .optional(),
+          sortPresets: z.array(SortPresetSchema).min(1).optional(),
           search: z
             .array(
               z.string({
@@ -628,6 +630,7 @@ const ContentLeafSchema = z
           default: z
             .object(
               {
+                sortPreset: z.string().min(1).optional(),
                 search: z
                   .string({
                     message: "'search' must be a string.",
@@ -860,6 +863,37 @@ const ConfigSchema = z
           );
         }
         return;
+      }
+
+      const presets = item.view?.sortPresets ?? [];
+      const names = new Set<string>();
+      const findField = (fieldPath: string) => {
+        let fields = item.fields;
+        let field: any;
+        for (const part of fieldPath.split('.')) {
+          field = fields?.find((candidate: any) => candidate.name === part);
+          if (!field) return undefined;
+          if (field.component) field = { ...(data.components as any)?.[field.component], ...field };
+          if (field.list) return undefined;
+          fields = field.fields;
+        }
+        return field;
+      };
+      presets.forEach((preset: any, index: number) => {
+        const presetPath = [...path, 'view', 'sortPresets', index];
+        if (item.type !== 'collection') ctx.addIssue({ code: 'custom', message: 'Sort presets require a collection.', path: presetPath });
+        if (names.has(preset.name)) ctx.addIssue({ code: 'custom', message: 'Sort preset names must be unique.', path: [...presetPath, 'name'] });
+        names.add(preset.name);
+        preset.fields.forEach((rule: any, ruleIndex: number) => {
+          const field = findField(rule.field);
+          if (!field || !['string', 'text', 'number', 'boolean', 'date', 'select', 'uuid'].includes(field.type)) {
+            ctx.addIssue({ code: 'custom', message: 'Sort presets must reference an existing scalar field.', path: [...presetPath, 'fields', ruleIndex, 'field'] });
+          }
+        });
+      });
+      if (item.view?.default?.sortPreset) {
+        if (!names.has(item.view.default.sortPreset)) ctx.addIssue({ code: 'custom', message: 'Unknown default sort preset.', path: [...path, 'view', 'default', 'sortPreset'] });
+        if (item.view.default.sort != null || item.view.default.order != null) ctx.addIssue({ code: 'custom', message: 'Choose a default sort preset or a default column sort, not both.', path: [...path, 'view', 'default'] });
       }
 
       const actions = Array.isArray(item.actions) ? item.actions : [];
