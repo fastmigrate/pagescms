@@ -34,3 +34,12 @@ uses the existing repository authorization, including private repositories.
 Missing images, unknown fields/media sources, disabled media, and external image
 URLs retain selectable labels with a placeholder. Omit `options.image` to retain
 the existing text-only editor. No image copies or content migrations are needed.
+
+## Dependency security refresh — 2026-09-09
+
+FM-002 refreshes Next.js/@next/env/eslint-config-next to 16.3.4 and Nodemailer
+to 9.1.1. The lockfile updates the compatible Tiptap family to 3.31.3, Sharp
+to 0.35.4, and patched build-tool dependencies. The CI audit threshold remains
+`--omit=dev --audit-level=high`. Four moderate advisories remain in the legacy
+Drizzle Kit -> @esbuild-kit -> esbuild chain; npm's proposed forced fix is an
+incompatible Drizzle Kit downgrade and is deliberately not applied.
