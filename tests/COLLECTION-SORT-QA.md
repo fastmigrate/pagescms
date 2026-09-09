@@ -69,3 +69,18 @@ type (select values are strings). The full suite has 33 passing tests.
 The standard CI build passed at 6d610a9 (run 34354292736). New fixes require their
 own green CI and a completed clean Codex re-review before merge. Local production
 build limitations remain covered by that same unmodified CI job.
+
+## Review round 2: field loading and normalization
+
+Codex review 5155036569 found three P2 issues: reverse-declared component
+chains accepted by validation but incompletely normalized (3969022359), nested
+paths traversing non-object fields (3969022370), and reserved content names
+colliding with collection API parameters (3969022379).
+
+The runtime now resolves component chains recursively with cycle detection;
+preset path validation requires object intermediates and retains inherited
+component types. Preset requests use the explicit `fields.` API prefix.
+`collection-sort-api.test.mts` exercises actual normalization, schema validation,
+JSON parsing, collection route loading and final comparison with synthetic data.
+All three regression cases fail against the previous code and pass with the
+fixes. The full suite now contains 36 passing tests. No customer data is included.

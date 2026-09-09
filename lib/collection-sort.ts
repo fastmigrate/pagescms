@@ -27,6 +27,9 @@ export const presetColumnId = (name: string) => `__sortPreset:${name}`;
 export const presetFieldPaths = (presets: SortPreset[] = []) =>
   [...new Set(presets.flatMap(preset => preset.fields.map(rule => rule.field)))];
 
+export const presetRequestFields = (presets: SortPreset[] = []) =>
+  presetFieldPaths(presets).map(path => `fields.${path}`);
+
 function valueAt(fields: SortEntry['fields'], path: string): unknown {
   return path.split('.').reduce<unknown>((value, key) =>
     value && typeof value === 'object' && Object.hasOwn(value, key)

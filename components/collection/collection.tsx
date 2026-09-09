@@ -32,7 +32,7 @@ import {
 import { requireApiSuccess } from "@/lib/api-client";
 import { EmptyCreate } from "@/components/empty-create";
 import { FileOptions } from "@/components/file/file-options";
-import { presetColumns, presetColumnId, presetFieldPaths } from "@/lib/collection-sort";
+import { presetColumns, presetColumnId, presetRequestFields } from "@/lib/collection-sort";
 import { CollectionTable } from "./collection-table";
 import { FolderCreate } from "@/components/folder-create";
 import { resolveContentOperations } from "@/lib/operations";
@@ -257,7 +257,7 @@ export function Collection({ name, path }: { name: string; path?: string }) {
   const requestedFieldPaths = useMemo(() => {
     const paths = new Set<string>(["name", "path", primaryField]);
     viewFields.forEach((item: any) => paths.add(item.path));
-    presetFieldPaths(schema.view?.sortPresets).forEach(path => paths.add(path));
+    presetRequestFields(schema.view?.sortPresets).forEach(path => paths.add(path));
     return Array.from(paths);
   }, [primaryField, viewFields, schema.view?.sortPresets]);
 

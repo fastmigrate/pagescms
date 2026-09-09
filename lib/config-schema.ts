@@ -877,16 +877,18 @@ const ConfigSchema = z
         const overrides = { ...field };
         delete overrides.component;
         // Match component normalization: deep-merge options, replace arrays.
-        return mergeWith({}, base, overrides, (_previous: any, next: any) => Array.isArray(next) ? next : undefined);
+        return mergeWith({}, base, overrides, {type: base.type}, (_previous: any, next: any) => Array.isArray(next) ? next : undefined);
       };
       const findField = (fieldPath: string) => {
         let fields = item.fields;
         let field: any;
-        for (const part of fieldPath.split('.')) {
+        const parts = fieldPath.split('.');
+        for (const [index, part] of parts.entries()) {
           field = fields?.find((candidate: any) => candidate.name === part);
           if (!field) return undefined;
           field = resolveSortComponent(field);
           if (!field || field.list || (field.type === 'select' && field.options?.multiple)) return undefined;
+          if (index < parts.length - 1 && field.type !== 'object') return undefined;
           fields = field.fields;
         }
         return field;

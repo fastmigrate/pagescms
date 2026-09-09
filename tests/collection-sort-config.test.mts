@@ -67,3 +67,11 @@ test('ordered values must match stored scalar types, including select strings', 
     assert.equal(ConfigSchema.safeParse(make(invalid)).success,false,type);
   }
 });
+
+
+test('rejects nested preset paths through non-object fields', () => {
+  const value = {...entry,fields:[{name:'title',type:'string',fields:[{name:'rank',type:'number'}]}],view:{...entry.view,sortPresets:[{...preset,fields:[{field:'title.rank',order:'asc'}]}]}};
+  assert.equal(ConfigSchema.safeParse(config(value)).success,false);
+  value.fields[0].type = 'object';
+  assert.equal(ConfigSchema.safeParse(config(value)).success,true);
+});
