@@ -1,3 +1,4 @@
+import { assertFileWriteOrigin, assertMediaContent, readFileRequest } from "@/lib/upload-limits";
 import { type NextRequest } from "next/server";
 import { createOctokitInstance } from "@/lib/utils/octokit";
 import { isContentOperationAllowed } from "@/lib/operations";
@@ -29,6 +30,7 @@ export async function POST(
   context: { params: Promise<{ owner: string, repo: string, branch: string, path: string }> }
 ) {
   try {
+    assertFileWriteOrigin(request);
     const params = await context.params;
     const sessionResult = await requireApiUserSession();
     if ("response" in sessionResult) return sessionResult.response;
@@ -44,7 +46,7 @@ export async function POST(
     });
     if (!config && normalizedPath !== ".pages.yml") throw new Error(`Configuration not found for ${params.owner}/${params.repo}/${params.branch}.`);
 
-    const data: any = await request.json();
+    const data: any = await readFileRequest(request);
     const onConflict = data.onConflict === "error" ? "error" : "rename";
 
     let contentBase64;
@@ -179,6 +181,7 @@ export async function POST(
             !schema.extensions.includes(getFileExtension(normalizedPath))
           ) throw new Error(`Invalid extension "${getFileExtension(normalizedPath)}" for media.`);
 
+          assertMediaContent(data.content);
           contentBase64 = data.content;
         }
         break;
@@ -451,6 +454,7 @@ export async function DELETE(
   context: { params: Promise<{ owner: string, repo: string, branch: string, path: string }> }
 ) {
   try {
+    assertFileWriteOrigin(request);
     const params = await context.params;
     const sessionResult = await requireApiUserSession();
     if ("response" in sessionResult) return sessionResult.response;
