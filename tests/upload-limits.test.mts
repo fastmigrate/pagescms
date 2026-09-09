@@ -43,7 +43,7 @@ test('file routes bypass body cloning; other API routes keep proxy protection', 
   for (const path of ['/api/owner/repo/main/files/photo.jpg', '/api/owner/repo/feature%2Ftest/files/images%2Fphoto.jpg', '/api/owner/repo/main/files/page.json']) {
     assert.equal(unstable_doesMiddlewareMatch({config: mod.exports.config, nextConfig: {}, url: path}), false, path);
   }
-  for (const path of ['/api/owner/repo/main/references/works', '/api/auth/session', '/owner/repo/main/file/home']) {
+  for (const path of ['/api/owner/repo/main/references/works', '/api/auth/session', '/api/owner/repo/main/files/photo.jpg/rename', '/api/owner/repo/main/files/images%2Fphoto.jpg/rename', '/owner/repo/main/file/home']) {
     assert.equal(unstable_doesMiddlewareMatch({config: mod.exports.config, nextConfig: {}, url: path}), true, path);
   }
 });
@@ -82,4 +82,35 @@ test('actual file API rejects excess media and malformed bodies before any GitHu
   assert.equal((await route.exports.POST(make('{}', 'https://evil.test'), context)).status, 403);
   assert.equal((await route.exports.DELETE(make('{}', 'https://evil.test'), context)).status, 403);
   assert.equal(writes, 0);
+});
+
+test('rich-text paste/drop/slash upload failures expose the size explanation through a toast', async () => {
+  // Execute the actual handler with the editor and notification surfaces replaced.
+  const source = ts.createSourceFile('editor.tsx', readFileSync(new URL('../components/ui/editor/index.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let handler: ts.Expression | undefined;
+  const visit = (node: ts.Node) => {
+    if (ts.isVariableDeclaration(node) && node.name.getText(source) === 'insertLocalImageFile') handler = node.initializer;
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  assert.ok(handler);
+  const code = ts.transpileModule(`const handler = ${handler.getText(source)};`, {compilerOptions: {target: ts.ScriptTarget.ES2022}}).outputText;
+  for (const sourceType of ['paste', 'drop', 'slash']) {
+    const messages: string[] = [];
+    const chain: any = {focus: () => chain, insertContent: () => chain, run: () => {}};
+    let storedMessage: string | undefined;
+    const dependencies: Record<string, any> = {
+      createUploadId: () => 'id', URL: {createObjectURL: () => 'blob:test'},
+      objectUrlByUploadIdRef: {current: new Map()}, expectedBlobByUploadIdRef: {current: new Map()},
+      updatePendingUploads: () => {}, editor: {chain: () => chain},
+      onUploadImage: async (file: any) => assertUploadSize(file.size),
+      finalizeImageUpload: (_id: string, update: any) => {storedMessage = update({}).uploadError;},
+      cleanupUpload: () => {}, toast: {error: (message: string) => messages.push(message)},
+    };
+    const run = new Function(...Object.keys(dependencies), `${code}\nreturn handler;`)(...Object.values(dependencies));
+    await run({name: 'painting.jpg', type: 'image/jpeg', size: MAX_UPLOAD_BYTES + 1}, sourceType);
+    assert.equal(messages.length, 1);
+    assert.match(messages[0], /painting.jpg.*7\.5 MB/);
+    assert.match(storedMessage!, /7\.5 MB/);
+  }
 });
