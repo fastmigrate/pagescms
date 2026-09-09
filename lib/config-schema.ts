@@ -5,6 +5,7 @@
  */
 
 import { z } from "zod";
+import mergeWith from "lodash.mergewith";
 import { SortPresetSchema } from "./collection-sort";
 import { fieldTypes } from "@/fields/registry";
 
@@ -434,7 +435,7 @@ const generateFieldObjectSchema = (
               .strict(),
           ])
           .optional(),
-        options: z.object({}).optional().nullable(),
+        options: z.object({}).passthrough().optional().nullable(),
         blocks: z
           .array(
             z.lazy(() => generateFieldObjectSchema(false, true)),
@@ -867,14 +868,25 @@ const ConfigSchema = z
 
       const presets = item.view?.sortPresets ?? [];
       const names = new Set<string>();
+      const resolveSortComponent = (field: any, seen = new Set<string>()): any => {
+        if (!field?.component) return field;
+        const component = field.component;
+        if (seen.has(component) || !data.components || !Object.hasOwn(data.components, component)) return undefined;
+        const base = resolveSortComponent((data.components as any)[component], new Set([...seen, component]));
+        if (!base) return undefined;
+        const overrides = { ...field };
+        delete overrides.component;
+        // Match component normalization: deep-merge options, replace arrays.
+        return mergeWith({}, base, overrides, (_previous: any, next: any) => Array.isArray(next) ? next : undefined);
+      };
       const findField = (fieldPath: string) => {
         let fields = item.fields;
         let field: any;
         for (const part of fieldPath.split('.')) {
           field = fields?.find((candidate: any) => candidate.name === part);
           if (!field) return undefined;
-          if (field.component) field = { ...(data.components as any)?.[field.component], ...field };
-          if (field.list) return undefined;
+          field = resolveSortComponent(field);
+          if (!field || field.list || (field.type === 'select' && field.options?.multiple)) return undefined;
           fields = field.fields;
         }
         return field;
@@ -888,7 +900,14 @@ const ConfigSchema = z
           const field = findField(rule.field);
           if (!field || !['string', 'text', 'number', 'boolean', 'date', 'select', 'uuid'].includes(field.type)) {
             ctx.addIssue({ code: 'custom', message: 'Sort presets must reference an existing scalar field.', path: [...presetPath, 'fields', ruleIndex, 'field'] });
+            return;
           }
+          const valueType = field.type === 'number' ? 'number' : field.type === 'boolean' ? 'boolean' : 'string';
+          rule.values?.forEach((value: unknown, valueIndex: number) => {
+            if (typeof value !== valueType || (typeof value === 'number' && !Number.isFinite(value))) {
+              ctx.addIssue({ code: 'custom', message: `Ordered values must use the field's stored ${valueType} type.`, path: [...presetPath, 'fields', ruleIndex, 'values', valueIndex] });
+            }
+          });
         });
       });
       if (item.view?.default?.sortPreset) {

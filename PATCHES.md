@@ -79,6 +79,10 @@ follow `view.foldersFirst`; tree presets sort siblings, not across parents.
 
 A named preset cannot coexist with `default.sort`/`default.order`. Duplicate
 names/fields/values and unknown or non-scalar paths are configuration errors.
+Multiple-select fields are non-scalar. Components are resolved through their
+inheritance chain, including options; missing/cyclic references are rejected.
+Explicit ordered values must match the stored primitive type: number, boolean,
+or string (including single-select values).
 Column sorting remains available; the selector displays Column sorting until a
 preset is restored. Presets do not filter drafts, reorder content files or write
 computed fields. Leave presets unset to retain the previous UI. See

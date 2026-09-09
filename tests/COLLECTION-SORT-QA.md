@@ -15,7 +15,7 @@ search retains it. Switching collections remounts the table with its own default
 
 ## Verification — 2026-09-09
 
-- 30 tests pass, including real TanStack pagination/filtering/restoration and
+- 33 tests pass, including real TanStack pagination/filtering/restoration and
   recomputation, numeric ordering, explicit section order, ties, missing values,
   nested fields/folders, and actual configuration schema rejection fixtures.
 - TypeScript passes. ESLint has zero errors and 17 pre-existing warnings.
@@ -54,3 +54,18 @@ and release review, then pin the accepted immutable revision through the shared
 Tools deployment gate. Only afterward activate customer sortPresets settings and
 perform an authenticated no-write smoke. Existing deployed CMS rejects the new
 configuration keys. Do not push a customer opt-in ahead of the shared release.
+
+## Codex review round 1
+
+Review 5154729343 of head 6d610a9 reported three P2 findings: reject multi-select
+fields (3968762306), resolve chained components (3968762315), and type-check
+explicit ordered values (3968762323). All three have regression fixtures that
+failed before the fixes and pass afterward. Component options now survive Zod
+parsing so inherited multiple-selection settings can be checked; recursive
+resolution uses the runtime's deep-merge/array-replacement semantics and rejects
+missing/cyclic references. Ordered values must use the resolved stored primitive
+type (select values are strings). The full suite has 33 passing tests.
+
+The standard CI build passed at 6d610a9 (run 34354292736). New fixes require their
+own green CI and a completed clean Codex re-review before merge. Local production
+build limitations remain covered by that same unmodified CI job.
