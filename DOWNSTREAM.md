@@ -42,6 +42,14 @@ reconciliation. No token or organization credential is stored here.
 - Production pins an exact commit or image digest. Branches and moving tags are
   never deployment inputs.
 
+## Pull requests and review
+
+Follow the required PR → `@codex review` → fix → re-review loop in `AGENTS.md`.
+After a clean completed review of the final head and passing required checks,
+merge into the active release branch without another routine permission prompt.
+Opening the PR, tagging Codex, waiting for its result, and fixing/reviewing again
+are part of the implementation task. Production rollout remains a separate gate.
+
 ## Updating the upstream base
 
 1. Fetch upstream without merging it into an active release branch:

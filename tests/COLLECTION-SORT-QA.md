@@ -29,9 +29,9 @@ search retains it. Switching collections remounts the table with its own default
   worker port, and Webpack cannot fetch the existing Google Fonts. The standard
   unmodified CI build remains required before rollout.
 - No production deployment or authenticated hosted acceptance is claimed.
-- Feature-branch push was rejected by automatic approval review because public
-  source-code transfer needs explicit owner authorization. The implementation
-  is committed locally; PR creation and CI await that authorization.
+- The owner explicitly authorized PR creation, Codex review/fix/re-review until
+  clean, and merge after checks on 2026-09-09. PR #8 is open; review is pending.
+  The standing workflow is now recorded in AGENTS.md and DOWNSTREAM.md.
 
 ## Repeat the browser smoke
 
