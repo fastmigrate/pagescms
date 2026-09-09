@@ -1,5 +1,6 @@
 export const maxDuration = 30;
 
+import { referenceImage } from "@/fields/core/reference/image-preview";
 import { type NextRequest } from "next/server";
 import { parse } from "@/lib/serialization";
 import { readFns } from "@/fields/registry";
@@ -46,11 +47,19 @@ export async function GET(
     const searchFields = searchParams.get("searchFields")?.split(",").filter(Boolean) || ["name"];
     const selectedValues = searchParams.getAll("value").filter(Boolean);
     const primaryField = getPrimaryField(schema);
+    const imagePath = (searchParams.get("imageField") || "").replace(/^fields\./, "");
+    const imageField = imagePath ? getFieldByPath(schema.fields || [], imagePath) : undefined;
+    const imageMedia = imageField?.type === "image" && imageField.options?.media !== false
+      ? (typeof imageField.options?.media === "string"
+        ? getSchemaByName(config.object, imageField.options.media, "media")
+        : config.object.media?.[0])
+      : undefined;
 
     const requiredFields = Array.from(new Set([
       ...resolveReferenceFieldPaths(extractTemplateFields(valueTemplate), primaryField),
       ...resolveReferenceFieldPaths(extractTemplateFields(labelTemplate), primaryField),
       ...resolveReferenceFieldPaths(searchFields, primaryField),
+      ...(imageMedia ? [imagePath] : []),
     ]));
 
     const normalizedPath = normalizePath(schema.path || "");
@@ -88,8 +97,8 @@ export async function GET(
       .map((item) => ({
         value: String(interpolate(valueTemplate, item, "fields")),
         label: String(interpolate(labelTemplate, item, "fields")),
-      }))
-      .filter((item) => item.value.length > 0);
+        ...(imageMedia ? { image: referenceImage(safeAccess(item.fields, imagePath), imageMedia.name) } : {}),
+      }));
 
     const filtered = selectedValues.length > 0
       ? options.filter((item) => selectedValues.includes(item.value))
@@ -98,7 +107,7 @@ export async function GET(
     return Response.json({
       status: "success",
       data: {
-        options: filtered,
+        options: filtered.filter((item) => item.value.length > 0),
       },
     });
   } catch (error: any) {
