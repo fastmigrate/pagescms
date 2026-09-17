@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import nextEnv from "@next/env";
 import {
   getPackageManagerInvocation,
+  isLocalSandboxDatabaseUrl,
   isPlaceholderValue,
   isValidCryptoKey,
 } from "./dev-environment.mjs";
@@ -37,6 +38,13 @@ for (const key of requiredGitHubKeys) {
 
 if (!isValidCryptoKey(process.env.CRYPTO_KEY)) {
   fail("CRYPTO_KEY must be a 32-byte standard base64 value. Generate one with: openssl rand -base64 32");
+}
+
+const postgresPort = process.env.PAGESCMS_POSTGRES_PORT?.trim() || "5432";
+if (!isLocalSandboxDatabaseUrl(process.env.DATABASE_URL, postgresPort)) {
+  fail(
+    `DATABASE_URL must target localhost on the Compose PostgreSQL port (${postgresPort}).`,
+  );
 }
 
 let packageManager;

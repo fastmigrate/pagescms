@@ -16,6 +16,39 @@ const isValidCryptoKey = (value) => {
     Buffer.from(normalized, "base64").length === 32;
 };
 
+const selectExistingCryptoKey = (targetFileValue, environmentValue) => {
+  if (isValidCryptoKey(targetFileValue)) return targetFileValue.trim();
+  if (isValidCryptoKey(environmentValue)) return environmentValue.trim();
+  return "";
+};
+
+const selectExistingAuthSecret = (targetFileValue, environmentValue) => {
+  const isConfigured = (value) => {
+    const normalized = value?.trim() || "";
+    return normalized && normalized !== "random-string-of-characters";
+  };
+
+  if (isConfigured(targetFileValue)) return targetFileValue.trim();
+  if (isConfigured(environmentValue)) return environmentValue.trim();
+  return "";
+};
+
+const isLocalSandboxDatabaseUrl = (value, expectedPort = "5432") => {
+  try {
+    const url = new URL(value);
+    const loopbackHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
+    const port = url.port || "5432";
+
+    return (
+      ["postgres:", "postgresql:"].includes(url.protocol) &&
+      loopbackHosts.has(url.hostname) &&
+      port === String(expectedPort)
+    );
+  } catch {
+    return false;
+  }
+};
+
 const buildFixtureEnvironment = (environment = process.env) => ({
   ...environment,
   PAGESCMS_FIXTURES_ENABLED: "true",
@@ -35,6 +68,9 @@ const getPackageManagerInvocation = (
 export {
   buildFixtureEnvironment,
   getPackageManagerInvocation,
+  isLocalSandboxDatabaseUrl,
   isPlaceholderValue,
   isValidCryptoKey,
+  selectExistingAuthSecret,
+  selectExistingCryptoKey,
 };

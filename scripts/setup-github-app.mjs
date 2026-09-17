@@ -4,7 +4,10 @@ import { randomBytes } from "node:crypto";
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { isValidCryptoKey } from "./dev-environment.mjs";
+import {
+  selectExistingAuthSecret,
+  selectExistingCryptoKey,
+} from "./dev-environment.mjs";
 
 const args = parseArgs(process.argv.slice(2));
 
@@ -92,17 +95,21 @@ async function main() {
 
   const converted = await exchangeManifestCode(code);
   const envPath = args.envPath ? resolve(process.cwd(), args.envPath) : "";
+  const targetFileAuthSecret = envPath
+    ? readEnvScalar(envPath, "BETTER_AUTH_SECRET") ||
+      readEnvScalar(envPath, "AUTH_SECRET")
+    : "";
   const authSecret =
-    process.env.BETTER_AUTH_SECRET ||
-    process.env.AUTH_SECRET ||
-    randomBytes(32).toString("base64url");
-  const configuredCryptoKey = (
-    process.env.CRYPTO_KEY ||
-    (envPath ? readEnvScalar(envPath, "CRYPTO_KEY") : "")
-  ).trim();
-  const cryptoKey = isValidCryptoKey(configuredCryptoKey)
-    ? configuredCryptoKey
-    : randomBytes(32).toString("base64");
+    selectExistingAuthSecret(
+      targetFileAuthSecret,
+      process.env.BETTER_AUTH_SECRET || process.env.AUTH_SECRET,
+    ) || randomBytes(32).toString("base64url");
+  const targetFileCryptoKey = envPath
+    ? readEnvScalar(envPath, "CRYPTO_KEY")
+    : "";
+  const cryptoKey =
+    selectExistingCryptoKey(targetFileCryptoKey, process.env.CRYPTO_KEY) ||
+    randomBytes(32).toString("base64");
 
   const envValues = {
     BASE_URL: baseUrl,

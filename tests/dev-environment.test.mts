@@ -5,8 +5,11 @@ import test from "node:test";
 import {
   buildFixtureEnvironment,
   getPackageManagerInvocation,
+  isLocalSandboxDatabaseUrl,
   isPlaceholderValue,
   isValidCryptoKey,
+  selectExistingAuthSecret,
+  selectExistingCryptoKey,
 } from "../scripts/dev-environment.mjs";
 
 test("fixture environment injection is shell-independent", () => {
@@ -33,6 +36,34 @@ test("the sandbox database is published on loopback only", async () => {
   assert.match(compose, /127\.0\.0\.1:\$\{PAGESCMS_POSTGRES_PORT:-5432\}:5432/u);
 });
 
+test("authenticated local development refuses remote or mismatched databases", () => {
+  assert.equal(
+    isLocalSandboxDatabaseUrl(
+      "postgresql://pagescms:pagescms@localhost:5432/pagescms",
+    ),
+    true,
+  );
+  assert.equal(
+    isLocalSandboxDatabaseUrl(
+      "postgres://pagescms:pagescms@127.0.0.1:55432/pagescms",
+      "55432",
+    ),
+    true,
+  );
+  assert.equal(
+    isLocalSandboxDatabaseUrl(
+      "postgresql://pagescms:pagescms@db.example.com:5432/pagescms",
+    ),
+    false,
+  );
+  assert.equal(
+    isLocalSandboxDatabaseUrl(
+      "postgresql://pagescms:pagescms@localhost:55432/pagescms",
+    ),
+    false,
+  );
+});
+
 test("local crypto keys must be exact 32-byte standard base64 values", () => {
   const valid = Buffer.alloc(32, 17).toString("base64");
 
@@ -45,4 +76,33 @@ test("local crypto keys must be exact 32-byte standard base64 values", () => {
   assert.equal(isPlaceholderValue("GITHUB_APP_NAME", "your-cms"), false);
   assert.equal(isPlaceholderValue("GITHUB_APP_PRIVATE_KEY", "configured-xxx-value"), false);
   assert.equal(isPlaceholderValue("GITHUB_APP_CLIENT_ID", "configured-value"), false);
+});
+
+test("GitHub App setup preserves a valid target-file crypto key", () => {
+  const targetKey = Buffer.alloc(32, 17).toString("base64");
+  const inheritedKey = Buffer.alloc(32, 18).toString("base64");
+
+  assert.equal(selectExistingCryptoKey(targetKey, inheritedKey), targetKey);
+  assert.equal(
+    selectExistingCryptoKey("random-string-of-characters", inheritedKey),
+    inheritedKey,
+  );
+  assert.equal(
+    selectExistingCryptoKey("random-string-of-characters", "invalid"),
+    "",
+  );
+});
+
+test("GitHub App setup also preserves the target file's session secret", () => {
+  assert.equal(
+    selectExistingAuthSecret("target-secret", "inherited-secret"),
+    "target-secret",
+  );
+  assert.equal(
+    selectExistingAuthSecret(
+      "random-string-of-characters",
+      "inherited-secret",
+    ),
+    "inherited-secret",
+  );
 });
