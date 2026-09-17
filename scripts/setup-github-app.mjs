@@ -4,6 +4,10 @@ import { randomBytes } from "node:crypto";
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import {
+  selectExistingAuthSecret,
+  selectExistingCryptoKey,
+} from "./dev-environment.mjs";
 
 const args = parseArgs(process.argv.slice(2));
 
@@ -91,14 +95,26 @@ async function main() {
 
   const converted = await exchangeManifestCode(code);
   const envPath = args.envPath ? resolve(process.cwd(), args.envPath) : "";
+  const targetFileAuthSecret = envPath
+    ? readEnvScalar(envPath, "BETTER_AUTH_SECRET") ||
+      readEnvScalar(envPath, "AUTH_SECRET")
+    : "";
   const authSecret =
-    process.env.BETTER_AUTH_SECRET ||
-    process.env.AUTH_SECRET ||
-    randomBytes(32).toString("base64url");
+    selectExistingAuthSecret(
+      targetFileAuthSecret,
+      process.env.BETTER_AUTH_SECRET || process.env.AUTH_SECRET,
+    ) || randomBytes(32).toString("base64url");
+  const targetFileCryptoKey = envPath
+    ? readEnvScalar(envPath, "CRYPTO_KEY")
+    : "";
+  const cryptoKey =
+    selectExistingCryptoKey(targetFileCryptoKey, process.env.CRYPTO_KEY) ||
+    randomBytes(32).toString("base64");
 
   const envValues = {
     BASE_URL: baseUrl,
     BETTER_AUTH_SECRET: authSecret,
+    CRYPTO_KEY: cryptoKey,
     GITHUB_APP_ID: String(converted.id),
     GITHUB_APP_NAME: converted.slug,
     GITHUB_APP_CLIENT_ID: converted.client_id,
@@ -297,6 +313,23 @@ function upsertEnv(filePath, values) {
     `${nextLines.join("\n").replace(/\n+$/g, "")}\n`,
     "utf8",
   );
+}
+
+function readEnvScalar(filePath, key) {
+  if (!existsSync(filePath)) return "";
+  const line = readFileSync(filePath, "utf8")
+    .split(/\r?\n/u)
+    .find((candidate) => candidate.startsWith(`${key}=`));
+  if (!line) return "";
+  const value = line.slice(key.length + 1).trim();
+  if (
+    value.length >= 2 &&
+    ((value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'")))
+  ) {
+    return value.slice(1, -1);
+  }
+  return value;
 }
 
 function tryOpenBrowser(url) {

@@ -22,3 +22,18 @@ test("lets GitHub generate and return the webhook secret", async () => {
     /GITHUB_APP_WEBHOOK_SECRET:\s*converted\.webhook_secret\s*\|\|\s*webhookSecret/,
   );
 });
+
+test("preserves target-file secrets and generates a crypto key only as fallback", async () => {
+  const source = await readFile(sourceUrl, "utf8");
+
+  assert.match(
+    source,
+    /selectExistingCryptoKey\(targetFileCryptoKey, process\.env\.CRYPTO_KEY\)/,
+  );
+  assert.match(
+    source,
+    /selectExistingAuthSecret\(\s*targetFileAuthSecret,/,
+  );
+  assert.match(source, /randomBytes\(32\)\.toString\("base64"\)/);
+  assert.match(source, /CRYPTO_KEY:\s*cryptoKey/);
+});

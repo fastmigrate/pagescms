@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+const shouldBlockDevFixtureRequest = (pathname: string) =>
+	pathname.startsWith("/dev/fixtures/") &&
+	(process.env.NODE_ENV === "production" || process.env.PAGESCMS_FIXTURES_ENABLED !== "true");
+
 function isAllowedOrigin(originHeader: string, hostHeader: string): boolean {
 	try {
 		const originUrl = new URL(originHeader);
@@ -16,6 +20,10 @@ export function proxy(request: NextRequest) {
 		pathname.startsWith("/_next/") ||
 		pathname === "/favicon.ico" ||
 		/\.[^/]+$/.test(pathname);
+
+	if (shouldBlockDevFixtureRequest(pathname)) {
+		return new NextResponse(null, { status: 404 });
+	}
 
 	if (isStaticAsset) {
 		return NextResponse.next();

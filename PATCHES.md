@@ -15,6 +15,7 @@ active FastMigrate release branch.
 | FM-006 | Active | Upload errors | Reject files above 7.5 MB before encoding and return explicit bounded-request errors before GitHub writes. | Upstream provides equivalent client and server upload validation. |
 | FM-007 | Active | Collection sort presets | Named multi-field ordering aligns collection lists with website ordering without stored computed fields. | Upstream supports equivalent named multi-field collection sort presets. |
 | FM-008 | Active | Entry duplication | Let configured collections create a validated draft copy through the normal save API without dispatching a build workflow. | Upstream supports equivalent opt-in collection-entry duplication through its normal save path. |
+| FM-009 | Active | Downstream development loop | Exercise production client components locally, run an authenticated sandbox stack, and verify exact candidate commits on an isolated VM before merge. | Upstream provides equivalent fixture, sandbox, and immutable candidate-verification workflows. |
 
 Each active patch must remain a separate commit, include proportionate tests,
 and avoid customer- or infrastructure-specific configuration.
@@ -143,3 +144,21 @@ collections, non-text duplicate fields, and prototype-related field paths are
 rejected by configuration validation and guarded again at runtime. The prompt
 field must participate in the filename template, and inferred primary fields
 skip object lists that cannot produce a stable scalar filename value.
+
+## Downstream development loop
+
+FM-009 adds two deliberately separate local paths. `npm run dev:fixtures`
+enables development-only routes that render production client components with
+deterministic in-memory boundaries and no authentication, database, GitHub, or
+external writes. Fixture routes return 404 in production builds even if their
+flag is present. `npm run dev:local` starts PostgreSQL, applies migrations, and
+runs the complete authenticated application against credentials from an
+untracked `.env.local`; those credentials must belong to a dedicated sandbox
+GitHub App and repository.
+
+The production behavior remains unchanged when no boundary is injected. The
+platform-side candidate command accepts only an immutable 40-character commit
+SHA and provisions an isolated Tools VM with a temporary Pages CMS source pin.
+It never invokes the production deployment path. This supplies candidate proof
+before merge while the normal post-merge pinned VM gate remains authoritative
+for a release.
