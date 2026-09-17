@@ -14,6 +14,7 @@ active FastMigrate release branch.
 
 | FM-006 | Active | Upload errors | Reject files above 7.5 MB before encoding and return explicit bounded-request errors before GitHub writes. | Upstream provides equivalent client and server upload validation. |
 | FM-007 | Active | Collection sort presets | Named multi-field ordering aligns collection lists with website ordering without stored computed fields. | Upstream supports equivalent named multi-field collection sort presets. |
+| FM-008 | Active | Entry duplication | Let configured collections create a validated draft copy through the normal save API without dispatching a build workflow. | Upstream supports equivalent opt-in collection-entry duplication through its normal save path. |
 
 Each active patch must remain a separate commit, include proportionate tests,
 and avoid customer- or infrastructure-specific configuration.
@@ -109,3 +110,31 @@ JSON, chunked bodies and cancellation, malformed requests, Next's actual
 matcher, same-origin checks, and the actual file route refusing unsafe inputs
 without GitHub writes. This downstream self-hosted limit does not increase a
 hosting provider's separate request limit (for example Vercel).
+
+## Native collection-entry duplication
+
+Collections may opt into a native duplicate button through
+`operations.duplicate`. A boolean `true` uses the collection primary field and
+English defaults. The object form can localize the editor prompt, select a
+string/text field, and force a boolean top-level `draft` field to `true`:
+
+```yaml
+operations:
+  create: true
+  duplicate:
+    label: Duplizieren
+    description: Der zuletzt gespeicherte Stand wird als Entwurf kopiert.
+    field: title
+    fieldLabel: Neuer Titel
+    button: Duplizieren
+    draft: true
+```
+
+The editor reloads the latest saved source entry, copies its structured
+content, applies the configured field and draft overrides, generates the new
+filename with the collection's normal filename template, and POSTs it to the
+existing file-save API with conflict renaming disabled. Normal create
+permissions, schema validation, serialization, commit identity/message, cache
+updates, and GitHub branch rules therefore remain authoritative. Unsaved form
+changes are never copied. Root-list collections and non-text duplicate fields
+are rejected by configuration validation.

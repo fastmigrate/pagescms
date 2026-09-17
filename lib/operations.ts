@@ -1,4 +1,4 @@
-type ContentOperation = "create" | "rename" | "delete";
+type ContentOperation = "create" | "rename" | "delete" | "duplicate";
 type ContentScope = "collection" | "file" | "settings";
 
 type ContentOperations = Record<ContentOperation, boolean>;
@@ -8,16 +8,19 @@ const contentOperationDefaults: Record<ContentScope, ContentOperations> = {
     create: true,
     rename: true,
     delete: true,
+    duplicate: false,
   },
   file: {
     create: true,
     rename: false,
     delete: true,
+    duplicate: false,
   },
   settings: {
     create: true,
     rename: false,
     delete: false,
+    duplicate: false,
   },
 };
 
@@ -44,6 +47,13 @@ const resolveContentOperations = ({
     create: defaults.create && configured.create !== false,
     rename: defaults.rename && configured.rename !== false,
     delete: defaults.delete && configured.delete !== false,
+    duplicate:
+      resolvedScope === "collection"
+      && configured.create !== false
+      && (configured.duplicate === true || (
+        configured.duplicate != null
+        && typeof configured.duplicate === "object"
+      )),
   };
 };
 

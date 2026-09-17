@@ -305,6 +305,41 @@ const FilenameConfigSchema = z.union([
     .strict(),
 ]);
 
+const DuplicateOperationSchema = z.union([
+  z.boolean({
+    message: "'operations.duplicate' must be a boolean or an object.",
+  }),
+  z
+    .object(
+      {
+        label: z.string({
+          message: "'operations.duplicate.label' must be a string.",
+        }).optional(),
+        description: z.string({
+          message: "'operations.duplicate.description' must be a string.",
+        }).optional(),
+        field: z.string({
+          message: "'operations.duplicate.field' must be a string.",
+        }).regex(/^[a-zA-Z0-9-_]+(?:\.[a-zA-Z0-9-_]+)*$/, {
+          message: "'operations.duplicate.field' must be a valid field path.",
+        }).optional(),
+        fieldLabel: z.string({
+          message: "'operations.duplicate.fieldLabel' must be a string.",
+        }).optional(),
+        button: z.string({
+          message: "'operations.duplicate.button' must be a string.",
+        }).optional(),
+        draft: z.boolean({
+          message: "'operations.duplicate.draft' must be a boolean.",
+        }).optional(),
+      },
+      {
+        message: "'operations.duplicate' must be a boolean or an object.",
+      },
+    )
+    .strict(),
+]);
+
 const ContentOperationsSchema = z
   .object({
     create: z
@@ -322,6 +357,7 @@ const ContentOperationsSchema = z
         message: "'operations.delete' must be a boolean.",
       })
       .optional(),
+    duplicate: DuplicateOperationSchema.optional(),
   })
   .strict();
 
@@ -915,6 +951,56 @@ const ConfigSchema = z
       if (item.view?.default?.sortPreset) {
         if (!names.has(item.view.default.sortPreset)) ctx.addIssue({ code: 'custom', message: 'Unknown default sort preset.', path: [...path, 'view', 'default', 'sortPreset'] });
         if (item.view.default.sort != null || item.view.default.order != null) ctx.addIssue({ code: 'custom', message: 'Choose a default sort preset or a default column sort, not both.', path: [...path, 'view', 'default'] });
+      }
+
+      const duplicate = item.operations?.duplicate;
+      if (duplicate === true || (duplicate && typeof duplicate === "object")) {
+        const duplicatePath = [...path, "operations", "duplicate"];
+        if (item.type !== "collection") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Entry duplication requires a collection.",
+            path: duplicatePath,
+          });
+        }
+        if (item.operations?.create === false) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Entry duplication requires 'operations.create' to be enabled.",
+            path: duplicatePath,
+          });
+        }
+        if (item.list === true) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Entry duplication isn't supported for root-list collections.",
+            path: duplicatePath,
+          });
+        }
+
+        const configuredField = typeof duplicate === "object" ? duplicate.field : undefined;
+        const duplicateField = configuredField
+          ?? item.view?.primary
+          ?? (findField("title") ? "title" : undefined);
+        const field = duplicateField ? findField(duplicateField) : undefined;
+        if (!field || !["string", "text"].includes(field.type)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Entry duplication requires a string or text primary field.",
+            path: [...duplicatePath, "field"],
+          });
+        }
+
+        if (typeof duplicate === "object" && duplicate.draft === true) {
+          const draftField = findField("draft");
+          if (!draftField || draftField.type !== "boolean") {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Draft duplication requires a boolean 'draft' field.",
+              path: [...duplicatePath, "draft"],
+            });
+          }
+        }
       }
 
       const actions = Array.isArray(item.actions) ? item.actions : [];
