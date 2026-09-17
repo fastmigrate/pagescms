@@ -3,6 +3,10 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import nextEnv from "@next/env";
+import {
+  isPlaceholderValue,
+  isValidCryptoKey,
+} from "./dev-environment.mjs";
 
 const { loadEnvConfig } = nextEnv;
 
@@ -25,9 +29,13 @@ loadEnvConfig(root);
 
 for (const key of requiredGitHubKeys) {
   const value = process.env[key]?.trim();
-  if (!value || /(?:your-|xxx|another-random|random-string-of-characters)/u.test(value)) {
+  if (isPlaceholderValue(value)) {
     fail(`Missing sandbox GitHub App value: ${key}`);
   }
+}
+
+if (!isValidCryptoKey(process.env.CRYPTO_KEY)) {
+  fail("CRYPTO_KEY must be a 32-byte standard base64 value. Generate one with: openssl rand -base64 32");
 }
 
 await run("docker", ["compose", "-f", "compose.dev.yml", "up", "-d", "--wait", "postgres"]);

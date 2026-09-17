@@ -22,3 +22,11 @@ test("lets GitHub generate and return the webhook secret", async () => {
     /GITHUB_APP_WEBHOOK_SECRET:\s*converted\.webhook_secret\s*\|\|\s*webhookSecret/,
   );
 });
+
+test("writes a valid generated crypto key when the environment has no usable key", async () => {
+  const source = await readFile(sourceUrl, "utf8");
+
+  assert.match(source, /isValidCryptoKey\(configuredCryptoKey\)/);
+  assert.match(source, /randomBytes\(32\)\.toString\("base64"\)/);
+  assert.match(source, /CRYPTO_KEY:\s*cryptoKey/);
+});
