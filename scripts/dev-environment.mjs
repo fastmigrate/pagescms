@@ -1,6 +1,14 @@
-const placeholderPattern = /(?:your-|xxx|another-random|random-string-of-characters)/u;
+const placeholderValues = {
+  GITHUB_APP_ID: "your-github-app-id",
+  GITHUB_APP_NAME: "your-github-app-machine-name",
+  GITHUB_APP_PRIVATE_KEY: "-----BEGIN RSA PRIVATE KEY-----\nxxx\n-----END RSA PRIVATE KEY-----",
+  GITHUB_APP_WEBHOOK_SECRET: "another-random-string-of-characters",
+  GITHUB_APP_CLIENT_ID: "your-github-app-client-id",
+  GITHUB_APP_CLIENT_SECRET: "your-github-app-client-secret",
+};
 
-const isPlaceholderValue = (value) => !value || placeholderPattern.test(value.trim());
+const isPlaceholderValue = (key, value) =>
+  !value || placeholderValues[key] === value.trim();
 
 const isValidCryptoKey = (value) => {
   const normalized = value?.trim() || "";
@@ -13,8 +21,20 @@ const buildFixtureEnvironment = (environment = process.env) => ({
   PAGESCMS_FIXTURES_ENABLED: "true",
 });
 
+const getPackageManagerInvocation = (
+  environment = process.env,
+  nodeExecutable = process.execPath,
+) => {
+  const cli = environment.npm_execpath?.trim();
+  if (!cli) {
+    throw new Error("Missing npm_execpath. Start this launcher with npm run dev:local.");
+  }
+  return { command: nodeExecutable, cli };
+};
+
 export {
   buildFixtureEnvironment,
+  getPackageManagerInvocation,
   isPlaceholderValue,
   isValidCryptoKey,
 };

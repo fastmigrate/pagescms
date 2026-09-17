@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import nextEnv from "@next/env";
 import {
+  getPackageManagerInvocation,
   isPlaceholderValue,
   isValidCryptoKey,
 } from "./dev-environment.mjs";
@@ -29,7 +30,7 @@ loadEnvConfig(root);
 
 for (const key of requiredGitHubKeys) {
   const value = process.env[key]?.trim();
-  if (isPlaceholderValue(value)) {
+  if (isPlaceholderValue(key, value)) {
     fail(`Missing sandbox GitHub App value: ${key}`);
   }
 }
@@ -38,13 +39,23 @@ if (!isValidCryptoKey(process.env.CRYPTO_KEY)) {
   fail("CRYPTO_KEY must be a 32-byte standard base64 value. Generate one with: openssl rand -base64 32");
 }
 
+let packageManager;
+try {
+  packageManager = getPackageManagerInvocation();
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+}
+if (!existsSync(packageManager.cli)) {
+  fail(`Package-manager CLI is missing: ${packageManager.cli}`);
+}
+
 await run("docker", ["compose", "-f", "compose.dev.yml", "up", "-d", "--wait", "postgres"]);
-await run("npm", ["run", "db:migrate"]);
+await run(packageManager.command, [packageManager.cli, "run", "db:migrate"]);
 
 console.log("\nLocal Pages CMS is starting with the configured sandbox GitHub App.");
 console.log("The database remains available after exit; stop it with npm run dev:local:down.\n");
 
-const child = spawn("npm", ["run", "dev"], {
+const child = spawn(packageManager.command, [packageManager.cli, "run", "dev"], {
   cwd: root,
   env: process.env,
   stdio: "inherit",
