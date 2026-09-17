@@ -141,9 +141,13 @@ export async function POST(
           normalizedPath = normalizePath(joinPathSegments([duplicateBasePath, filename]));
           const collectionPath = normalizePath(schema.path);
           if (
-            collectionPath
-            && normalizedPath !== collectionPath
-            && !normalizedPath.startsWith(`${collectionPath}/`)
+            normalizedPath === ".."
+            || normalizedPath.startsWith("../")
+            || (
+              collectionPath
+              && normalizedPath !== collectionPath
+              && !normalizedPath.startsWith(`${collectionPath}/`)
+            )
           ) {
             throw createHttpError("The duplicate filename escapes the collection path.", 400);
           }

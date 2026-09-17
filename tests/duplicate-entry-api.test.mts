@@ -164,7 +164,11 @@ test("the file API duplicates raw saved content through the normal create path",
       normalizePath: (path: string) => path.split("/").reduce((parts: string[], part) => {
         if (!part || part === ".") return parts;
         if (part === "..") {
-          parts.pop();
+          if (parts.length === 0 || parts[parts.length - 1] === "..") {
+            parts.push(part);
+          } else {
+            parts.pop();
+          }
           return parts;
         }
         parts.push(part);
@@ -293,4 +297,31 @@ test("the file API duplicates raw saved content through the normal create path",
 
   assert.equal(escapingResponse.status, 400);
   assert.match(await escapingResponse.text(), /escapes the collection path/u);
+
+  schema.path = "";
+  expectedSourcePath = "original.json";
+  const rootEscapeRequest = new Request(
+    "https://cms.test/api/o/r/main/files/original.json",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "content",
+        name: "jobs",
+        duplicate: { value: "Copy" },
+        onConflict: "error",
+      }),
+    },
+  );
+  const rootEscapeResponse = await route.exports.POST(rootEscapeRequest, {
+    params: Promise.resolve({
+      owner: "o",
+      repo: "r",
+      branch: "main",
+      path: expectedSourcePath,
+    }),
+  });
+
+  assert.equal(rootEscapeResponse.status, 400);
+  assert.match(await rootEscapeResponse.text(), /escapes the collection path/u);
 });
