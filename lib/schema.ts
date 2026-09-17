@@ -389,7 +389,7 @@ function findNestedFieldPath(
       return path;
     }
 
-    if (field.type === "object" && field.fields) {
+    if (field.type === "object" && !field.list && field.fields) {
       const nestedMatch = findNestedFieldPath(field.fields, matcher, path);
       if (nestedMatch) return nestedMatch;
     }

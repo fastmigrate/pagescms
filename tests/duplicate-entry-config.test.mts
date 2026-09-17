@@ -26,6 +26,26 @@ new Function("require", "module", "exports", code)(
 );
 const { ConfigSchema } = loadedModule.exports;
 
+const schemaSource = readFileSync(new URL("../lib/schema.ts", import.meta.url), "utf8");
+const schemaCode = ts.transpileModule(schemaSource, {
+  compilerOptions: {
+    module: ts.ModuleKind.CommonJS,
+    target: ts.ScriptTarget.ES2022,
+    esModuleInterop: true,
+  },
+}).outputText;
+const loadedSchema = { exports: {} as any };
+new Function("require", "module", "exports", schemaCode)(
+  (name: string) => name === "@/fields/registry"
+    ? { defaultValues: {}, schemas: {} }
+    : name === "@/types/field"
+      ? {}
+      : require(name),
+  loadedSchema,
+  loadedSchema.exports,
+);
+const { getPrimaryField } = loadedSchema.exports;
+
 const collection = (duplicate: unknown, overrides: Record<string, unknown> = {}) => ({
   name: "jobs",
   label: "Jobs",
@@ -62,6 +82,34 @@ test("accepts opt-in entry duplication with localized labels", () => {
       fields: [{ name: "name", type: "string" }],
     })],
   }).success, true);
+  assert.equal(ConfigSchema.safeParse({
+    content: [collection(true, {
+      view: {},
+      fields: [
+        {
+          name: "items",
+          type: "object",
+          list: true,
+          fields: [{ name: "title", type: "string" }],
+        },
+        { name: "name", type: "string" },
+      ],
+    })],
+  }).success, true);
+});
+
+test("primary inference skips scalar fields nested in object lists", () => {
+  assert.equal(getPrimaryField({
+    fields: [
+      {
+        name: "items",
+        type: "object",
+        list: true,
+        fields: [{ name: "title", type: "string" }],
+      },
+      { name: "name", type: "string" },
+    ],
+  }), "name");
 });
 
 test("rejects unsafe or unsupported duplicate configurations", () => {
@@ -77,6 +125,13 @@ test("rejects unsafe or unsupported duplicate configurations", () => {
     collection(true, { list: { collapsible: true } }),
     collection({ field: "title", unknown: true }),
     collection({ field: "__proto__.polluted" }),
+    collection({ field: "title" }, {
+      filename: "{fields.slug}.json",
+      fields: [
+        { name: "title", type: "string" },
+        { name: "slug", type: "string" },
+      ],
+    }),
     collection(true, {
       view: { primary: "constructor" },
       fields: [{ name: "constructor", type: "string" }],

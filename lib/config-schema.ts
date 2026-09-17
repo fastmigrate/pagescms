@@ -1000,13 +1000,13 @@ const ConfigSchema = z
         }
 
         const configuredField = typeof duplicate === "object" ? duplicate.field : undefined;
-        const duplicateField = configuredField
-          ?? item.view?.primary
+        const inferredPrimaryField = item.view?.primary
           ?? findFieldPath(item.fields, (field) => field.name === "title")
           ?? findFieldPath(
             item.fields,
             (field) => !["object", "block"].includes(String(field.type)),
           );
+        const duplicateField = configuredField ?? inferredPrimaryField;
         if (duplicateField?.split(".").some((part: string) => (
           ["__proto__", "prototype", "constructor"].includes(part)
         ))) {
@@ -1021,6 +1021,34 @@ const ConfigSchema = z
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: "Entry duplication requires a string or text primary field.",
+            path: [...duplicatePath, "field"],
+          });
+        }
+
+        const filenameTemplate = item.filename && typeof item.filename === "object"
+          ? item.filename.template
+          : item.filename ?? "{year}-{month}-{day}-{primary}.md";
+        const reservedDateTokens = new Set([
+          "year", "month", "day", "hour", "minute", "second",
+        ]);
+        const filenameTokens = [...filenameTemplate.matchAll(/\{([^}]+)\}/gu)]
+          .map((match) => match[1]);
+        const filenameFields = filenameTokens.flatMap((token) => {
+          if (token.startsWith("fields.")) return [token.slice(7)];
+          if (reservedDateTokens.has(token) || token === "primary" || token === "slug") return [];
+          return [token];
+        });
+        const duplicateChangesFilename = duplicateField && (
+          filenameFields.includes(duplicateField)
+          || (
+            filenameTokens.some((token) => token === "primary" || token === "slug")
+            && duplicateField === inferredPrimaryField
+          )
+        );
+        if (!duplicateChangesFilename) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Entry duplication field must participate in the filename template.",
             path: [...duplicatePath, "field"],
           });
         }

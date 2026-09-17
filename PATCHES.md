@@ -139,4 +139,6 @@ updates, and GitHub branch rules therefore remain authoritative. Unsaved form
 changes are never copied. Unmodeled stored keys are preserved, while
 schema-defined UUID identities are regenerated for the new entry. Root-list
 collections, non-text duplicate fields, and prototype-related field paths are
-rejected by configuration validation and guarded again at runtime.
+rejected by configuration validation and guarded again at runtime. The prompt
+field must participate in the filename template, and inferred primary fields
+skip object lists that cannot produce a stable scalar filename value.

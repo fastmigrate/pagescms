@@ -22,7 +22,7 @@ test("the file API duplicates raw saved content through the normal create path",
   const schema = {
     name: "jobs",
     type: "collection",
-    path: "content/jobs",
+    path: "",
     format: "json",
     extension: "json",
     filename: "{primary}.json",
@@ -51,7 +51,7 @@ test("the file API duplicates raw saved content through the normal create path",
     rest: {
       repos: {
         async getContent({ path }: { path: string }) {
-          assert.equal(path, "content/jobs/original.json");
+          assert.equal(path, "original.json");
           return {
             data: {
               type: "file",
@@ -160,7 +160,7 @@ test("the file API duplicates raw saved content through the normal create path",
     route.exports,
   );
 
-  const request = new Request("https://cms.test/api/o/r/main/files/content%2Fjobs%2Foriginal.json", {
+  const request = new Request("https://cms.test/api/o/r/main/files/original.json", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -175,12 +175,12 @@ test("the file API duplicates raw saved content through the normal create path",
       owner: "o",
       repo: "r",
       branch: "main",
-      path: "content/jobs/original.json",
+      path: "original.json",
     }),
   });
 
   assert.equal(response.status, 200);
-  assert.equal(writtenPath, "content/jobs/copy.json");
+  assert.equal(writtenPath, "copy.json");
   assert.equal(writtenDocument?.title, "Copy");
   assert.equal(writtenDocument?.draft, true);
   assert.deepEqual(writtenDocument?.future, { retained: true });

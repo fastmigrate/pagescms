@@ -87,7 +87,7 @@ export async function POST(
 
           const sourcePath = normalizedPath;
           if (
-            !sourcePath.startsWith(`${schema.path}/`)
+            (schema.path && !sourcePath.startsWith(`${schema.path}/`))
             || getFileExtension(sourcePath) !== (schema.extension ?? "")
           ) {
             throw createHttpError(`Invalid duplicate source path "${params.path}".`, 400);
