@@ -48,6 +48,15 @@ test('file routes bypass body cloning; other API routes keep proxy protection', 
   }
 });
 
+test('the proxy returns a real 404 for fixture routes unless development explicitly enables them', () => {
+  const previous = process.env.PAGESCMS_FIXTURES_ENABLED;
+  delete process.env.PAGESCMS_FIXTURES_ENABLED;
+  const response = mod.exports.proxy({nextUrl: {pathname: '/dev/fixtures/entry-duplicate'}});
+  assert.equal(response.status, 404);
+  if (previous === undefined) delete process.env.PAGESCMS_FIXTURES_ENABLED;
+  else process.env.PAGESCMS_FIXTURES_ENABLED = previous;
+});
+
 test('both file write methods retain origin checks including image extensions', () => {
   for (const method of ['POST', 'DELETE']) {
     const make = (origin?: string) => new Request('https://cms.test/api/o/r/main/files/photo.jpg', {method, headers: { host: 'cms.test', ...(origin ? {origin} : {})}});

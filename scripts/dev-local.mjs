@@ -1,0 +1,72 @@
+#!/usr/bin/env node
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import nextEnv from "@next/env";
+
+const { loadEnvConfig } = nextEnv;
+
+const root = process.cwd();
+const envPath = resolve(root, ".env.local");
+const requiredGitHubKeys = [
+  "GITHUB_APP_ID",
+  "GITHUB_APP_NAME",
+  "GITHUB_APP_PRIVATE_KEY",
+  "GITHUB_APP_WEBHOOK_SECRET",
+  "GITHUB_APP_CLIENT_ID",
+  "GITHUB_APP_CLIENT_SECRET",
+];
+
+if (!existsSync(envPath)) {
+  fail("Missing .env.local. Copy .env.local.example, then configure a GitHub App installed only on a sandbox repository.");
+}
+
+loadEnvConfig(root);
+
+for (const key of requiredGitHubKeys) {
+  const value = process.env[key]?.trim();
+  if (!value || /(?:your-|xxx|another-random|random-string-of-characters)/u.test(value)) {
+    fail(`Missing sandbox GitHub App value: ${key}`);
+  }
+}
+
+await run("docker", ["compose", "-f", "compose.dev.yml", "up", "-d", "--wait", "postgres"]);
+await run("npm", ["run", "db:migrate"]);
+
+console.log("\nLocal Pages CMS is starting with the configured sandbox GitHub App.");
+console.log("The database remains available after exit; stop it with npm run dev:local:down.\n");
+
+const child = spawn("npm", ["run", "dev"], {
+  cwd: root,
+  env: process.env,
+  stdio: "inherit",
+});
+
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.on(signal, () => child.kill(signal));
+}
+
+child.on("exit", (code, signal) => {
+  if (signal) process.kill(process.pid, signal);
+  process.exit(code ?? 1);
+});
+
+function run(command, args) {
+  return new Promise((resolveRun, rejectRun) => {
+    const commandProcess = spawn(command, args, {
+      cwd: root,
+      env: process.env,
+      stdio: "inherit",
+    });
+    commandProcess.on("error", rejectRun);
+    commandProcess.on("exit", (code) => {
+      if (code === 0) resolveRun();
+      else rejectRun(new Error(`${command} exited with status ${code}`));
+    });
+  });
+}
+
+function fail(message) {
+  console.error(`Local development setup failed: ${message}`);
+  process.exit(1);
+}

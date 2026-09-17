@@ -30,6 +30,8 @@ export function EntryDuplicate({
   path,
   schema,
   disabled,
+  duplicateEntry,
+  onDuplicated,
 }: {
   owner: string;
   repo: string;
@@ -38,6 +40,8 @@ export function EntryDuplicate({
   path: string;
   schema: Record<string, any>;
   disabled?: boolean;
+  duplicateEntry?: (value: string) => Promise<ApiSuccess<EntryData>>;
+  onDuplicated?: (response: ApiSuccess<EntryData>) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
@@ -72,7 +76,9 @@ export function EntryDuplicate({
     if (!trimmedValue || isDuplicating) return;
 
     setIsDuplicating(true);
-    const duplicatePromise = (async (): Promise<ApiSuccess<EntryData>> => {
+    const duplicatePromise = duplicateEntry
+      ? duplicateEntry(trimmedValue)
+      : (async (): Promise<ApiSuccess<EntryData>> => {
       const response = await fetch(
         `/api/${owner}/${repo}/${encodedBranch}/files/${encodeURIComponent(path)}`,
         {
@@ -104,7 +110,11 @@ export function EntryDuplicate({
       void mutate((key) => typeof key === "string" && key.startsWith(collectionKeyPrefix));
       setOpen(false);
       setValue("");
-      router.push(`/${owner}/${repo}/${encodedBranch}/collection/${encodeURIComponent(name)}/edit/${encodeURIComponent(response.data.path)}`);
+      if (onDuplicated) {
+        onDuplicated(response);
+      } else {
+        router.push(`/${owner}/${repo}/${encodedBranch}/collection/${encodeURIComponent(name)}/edit/${encodeURIComponent(response.data.path)}`);
+      }
     } catch (error) {
       console.error(error);
     } finally {

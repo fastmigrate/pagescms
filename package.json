@@ -10,6 +10,9 @@
   "scripts": {
     "setup:github-app": "node scripts/setup-github-app.mjs",
     "dev": "next dev",
+    "dev:fixtures": "PAGESCMS_FIXTURES_ENABLED=true next dev --webpack",
+    "dev:local": "node scripts/dev-local.mjs",
+    "dev:local:down": "docker compose -f compose.dev.yml down",
     "build": "next build",
     "postbuild": "npm run db:migrate",
     "start": "next start",

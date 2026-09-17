@@ -1,0 +1,21 @@
+name: pagescms-development
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: pagescms
+      POSTGRES_PASSWORD: pagescms
+      POSTGRES_DB: pagescms
+    ports:
+      - "${PAGESCMS_POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pagescms -d pagescms"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - pagescms-postgres:/var/lib/postgresql/data
+
+volumes:
+  pagescms-postgres:
