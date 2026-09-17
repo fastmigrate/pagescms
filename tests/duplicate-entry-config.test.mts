@@ -137,6 +137,10 @@ test("rejects unsafe or unsupported duplicate configurations", () => {
       ],
     }),
     collection(true, {
+      filename: "news/{primary}.json",
+      subfolders: false,
+    }),
+    collection(true, {
       view: { primary: "constructor" },
       fields: [{ name: "constructor", type: "string" }],
     }),

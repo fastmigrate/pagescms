@@ -15,7 +15,7 @@ import { createHttpError, toErrorResponse } from "@/lib/api-error";
 import mergeWith from "lodash.mergewith";
 import { buildCommitTokens, resolveCommitIdentity, resolveCommitMessage } from "@/lib/commit-message";
 import { requireApiUserSession } from "@/lib/session-server";
-import { buildDuplicateContent, mergeDuplicateContent, resolveDuplicateOperation } from "@/lib/duplicate-entry";
+import { buildDuplicateContent, mergeDuplicateContent, mergeSanitizedDuplicateContent, resolveDuplicateOperation } from "@/lib/duplicate-entry";
 
 /**
  * Create, update and delete individual files in a GitHub repository.
@@ -124,7 +124,9 @@ export async function POST(
                 : value;
             },
           );
-          const editorSource = mergeDuplicateContent(sourceContent, modeledSource, true);
+          const editorSource = sanitizeObject(
+            mergeDuplicateContent(sourceContent, modeledSource, true),
+          );
           data.content = buildDuplicateContent({
             source: editorSource,
             field: operation.field,
@@ -214,9 +216,11 @@ export async function POST(
 
             const sanitizedContentObject = sanitizeObject(unwrappedContentObject);
             let finalContentObject = duplicateSourceContentObject
-              ? mergeDuplicateContent(
+              ? mergeSanitizedDuplicateContent(
                   duplicateSourceContentObject,
+                  unwrappedContentObject,
                   sanitizedContentObject,
+                  sanitizeObject,
                 )
               : structuredClone(unwrappedContentObject);
 

@@ -19,6 +19,7 @@ test("the file API duplicates raw saved content through the normal create path",
     futureNull: null,
     futureEmptyObject: {},
     futureEmptyArray: [],
+    summary: null,
   };
   let writtenPath = "";
   let writtenDocument: Record<string, unknown> | undefined;
@@ -40,6 +41,7 @@ test("the file API duplicates raw saved content through the normal create path",
       { name: "title", type: "string", required: true },
       { name: "draft", type: "boolean" },
       { name: "id", type: "uuid" },
+      { name: "summary", type: "string" },
       {
         name: "metadata",
         type: "object",
@@ -240,6 +242,7 @@ test("the file API duplicates raw saved content through the normal create path",
   assert.equal(writtenDocument?.futureNull, null);
   assert.deepEqual(writtenDocument?.futureEmptyObject, {});
   assert.deepEqual(writtenDocument?.futureEmptyArray, []);
+  assert.equal(Object.hasOwn(writtenDocument ?? {}, "summary"), false);
   assert.equal(Object.hasOwn(writtenDocument ?? {}, "metadata"), false);
   assert.notEqual(writtenDocument?.id, originalId);
 

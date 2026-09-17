@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildDuplicateContent,
   mergeDuplicateContent,
+  mergeSanitizedDuplicateContent,
   resolveDuplicateOperation,
 } from "../lib/duplicate-entry.ts";
 import { resolveContentOperations } from "../lib/operations.ts";
@@ -65,6 +66,56 @@ test("does not materialize modeled containers absent from the saved source", () 
   );
 
   assert.deepEqual(merged, { title: "Stored title" });
+});
+
+test("removes empty modeled values while preserving empty unmodeled values", () => {
+  const source = {
+    title: "Stored title",
+    summary: null,
+    futureNull: null,
+    metadata: { description: "Stored", futureEmpty: "" },
+  };
+  const modeled = {
+    title: "Copy",
+    summary: null,
+    metadata: { description: "Stored" },
+  };
+  const sanitizedModeled = {
+    title: "Copy",
+    metadata: { description: "Stored" },
+  };
+
+  assert.deepEqual(
+    mergeSanitizedDuplicateContent(source, modeled, sanitizedModeled),
+    {
+      title: "Copy",
+      futureNull: null,
+      metadata: { description: "Stored", futureEmpty: "" },
+    },
+  );
+});
+
+test("keeps raw list metadata aligned when empty modeled items are removed", () => {
+  const source = {
+    items: [null, { label: "Second", futureEmpty: "" }],
+  };
+  const modeled = {
+    items: [null, { label: "Second" }],
+  };
+  const sanitizedModeled = {
+    items: [{ label: "Second" }],
+  };
+  const sanitizeValue = (value: unknown) => value;
+
+  assert.deepEqual(
+    mergeSanitizedDuplicateContent(
+      source,
+      modeled,
+      sanitizedModeled,
+      sanitizeValue,
+    ),
+    { items: [{ label: "Second", futureEmpty: "" }] },
+  );
 });
 
 test("preserves reserved-name content keys without prototype mutation", () => {

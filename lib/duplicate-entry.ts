@@ -88,6 +88,67 @@ function mergeDuplicateContent(
   return result;
 }
 
+const mergeSanitizedDuplicateContent = (
+  source: Record<string, unknown>,
+  modeled: Record<string, unknown>,
+  sanitizedModeled: Record<string, unknown>,
+  sanitizeValue: (value: unknown) => unknown = (value) => value,
+): Record<string, unknown> => {
+  const mergeValue = (
+    sourceValue: unknown,
+    modeledValue: unknown,
+    sanitizedValue: unknown,
+  ): unknown => {
+    if (
+      isPlainObject(sourceValue)
+      && isPlainObject(modeledValue)
+      && isPlainObject(sanitizedValue)
+    ) {
+      return mergeSanitizedDuplicateContent(
+        sourceValue,
+        modeledValue,
+        sanitizedValue,
+        sanitizeValue,
+      );
+    }
+    if (Array.isArray(sanitizedValue)) {
+      if (!Array.isArray(sourceValue) || !Array.isArray(modeledValue)) {
+        return cloneContentValue(sanitizedValue);
+      }
+      const retainedModeledItems = modeledValue
+        .map((value, index) => ({
+          index,
+          sanitized: sanitizeValue(value),
+        }))
+        .filter(({ sanitized }) => sanitized != null && sanitized !== "");
+      return sanitizedValue.map((value, index) => {
+        const originalIndex = retainedModeledItems[index]?.index ?? index;
+        return mergeValue(
+          sourceValue[originalIndex],
+          modeledValue[originalIndex],
+          value,
+        );
+      });
+    }
+    return cloneContentValue(sanitizedValue);
+  };
+
+  const result = cloneContentValue(source) as Record<string, unknown>;
+  for (const [key, modeledValue] of Object.entries(modeled)) {
+    if (!Object.hasOwn(sanitizedModeled, key)) {
+      delete result[key];
+      continue;
+    }
+    const sourceValue = Object.hasOwn(result, key) ? result[key] : undefined;
+    setOwnContentValue(
+      result,
+      key,
+      mergeValue(sourceValue, modeledValue, sanitizedModeled[key]),
+    );
+  }
+  return result;
+};
+
 const resolveDuplicateOperation = (
   schema: Record<string, any>,
   primaryField?: string,
@@ -200,6 +261,7 @@ const buildDuplicateContent = ({
 export {
   buildDuplicateContent,
   mergeDuplicateContent,
+  mergeSanitizedDuplicateContent,
   resolveDuplicateOperation,
   type ResolvedDuplicateOperation,
 };

@@ -1075,6 +1075,13 @@ const ConfigSchema = z
         const filenameTemplate = item.filename && typeof item.filename === "object"
           ? item.filename.template
           : item.filename ?? "{year}-{month}-{day}-{primary}.md";
+        if (item.subfolders === false && filenameTemplate.includes("/")) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Entry duplication cannot use a nested filename when subfolders are disabled.",
+            path: duplicatePath,
+          });
+        }
         const reservedDateTokens = new Set([
           "year", "month", "day", "hour", "minute", "second",
         ]);
