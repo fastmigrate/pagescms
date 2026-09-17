@@ -2,12 +2,12 @@ import { assertFileWriteOrigin, assertMediaContent, readFileRequest } from "@/li
 import { type NextRequest } from "next/server";
 import { createOctokitInstance } from "@/lib/utils/octokit";
 import { isContentOperationAllowed } from "@/lib/operations";
-import { writeFns } from "@/fields/registry";
+import { readFns, writeFns } from "@/fields/registry";
 import { configVersion, parseConfig, normalizeConfig } from "@/lib/config";
 import { stringify, parse } from "@/lib/serialization";
-import { deepMap, generateZodSchema, getSchemaByName, sanitizeObject } from "@/lib/schema";
+import { deepMap, generateFilename, generateZodSchema, getPrimaryField, getSchemaByName, sanitizeObject } from "@/lib/schema";
 import { getConfig, updateConfig } from "@/lib/config-store";
-import { getFileExtension, getFileName, normalizePath, serializedTypes, getParentPath } from "@/lib/utils/file";
+import { getFileExtension, getFileName, normalizePath, serializedTypes, getParentPath, joinPathSegments } from "@/lib/utils/file";
 import { assertGithubIdentity } from "@/lib/authz-shared";
 import { getToken } from "@/lib/token";
 import { updateFileCache } from "@/lib/github-cache-file";
@@ -15,6 +15,7 @@ import { createHttpError, toErrorResponse } from "@/lib/api-error";
 import mergeWith from "lodash.mergewith";
 import { buildCommitTokens, resolveCommitIdentity, resolveCommitMessage } from "@/lib/commit-message";
 import { requireApiUserSession } from "@/lib/session-server";
+import { buildDuplicateContent, mergeDuplicateContent, mergeSanitizedDuplicateContent, resolveDuplicateOperation } from "@/lib/duplicate-entry";
 
 /**
  * Create, update and delete individual files in a GitHub repository.
@@ -39,7 +40,7 @@ export async function POST(
     const { token } = await getToken(user, params.owner, params.repo, true);
     if (!token) throw new Error("Token not found");
 
-    const normalizedPath = normalizePath(params.path);
+    let normalizedPath = normalizePath(params.path);
 
     const config = await getConfig(params.owner, params.repo, params.branch, {
       getToken: async () => token,
@@ -47,10 +48,13 @@ export async function POST(
     if (!config && normalizedPath !== ".pages.yml") throw new Error(`Configuration not found for ${params.owner}/${params.repo}/${params.branch}.`);
 
     const data: any = await readFileRequest(request);
-    const onConflict = data.onConflict === "error" ? "error" : "rename";
+    const onConflict = data.duplicate != null || data.onConflict === "error"
+      ? "error"
+      : "rename";
 
     let contentBase64;
     let schema;
+    let duplicateSourceContentObject: Record<string, unknown> | undefined;
     let schemaCommitTemplates: Record<string, string> | undefined;
     let schemaCommitIdentity: "app" | "user" | undefined;
 
@@ -65,6 +69,96 @@ export async function POST(
         }
         schemaCommitTemplates = schema?.commit?.templates;
         schemaCommitIdentity = schema?.commit?.identity;
+
+        if (data.duplicate != null) {
+          if (data.sha) throw new Error("A duplicate cannot update an existing file.");
+          if (!isContentOperationAllowed("duplicate", { schema })) {
+            throw createHttpError(`Duplicating entries isn't allowed for "${data.name}".`, 403);
+          }
+          if (schema.list || !serializedTypes.includes(schema.format) || !schema.fields) {
+            throw createHttpError("Only structured non-list collections can be duplicated.", 400);
+          }
+
+          const operation = resolveDuplicateOperation(schema, getPrimaryField(schema));
+          const duplicateValue = typeof data.duplicate?.value === "string"
+            ? data.duplicate.value.trim()
+            : "";
+          if (!operation || !duplicateValue) {
+            throw createHttpError("A valid duplicate value is required.", 400);
+          }
+
+          const sourcePath = normalizedPath;
+          if (
+            (schema.path && !sourcePath.startsWith(`${schema.path}/`))
+            || getFileExtension(sourcePath) !== (schema.extension ?? "")
+          ) {
+            throw createHttpError(`Invalid duplicate source path "${params.path}".`, 400);
+          }
+
+          const octokit = createOctokitInstance(token);
+          const sourceResponse = await octokit.rest.repos.getContent({
+            owner: params.owner,
+            repo: params.repo,
+            path: sourcePath,
+            ref: params.branch,
+          });
+          if (Array.isArray(sourceResponse.data) || sourceResponse.data.type !== "file") {
+            throw createHttpError("Duplicate source must be a file.", 400);
+          }
+
+          const sourceText = Buffer.from(sourceResponse.data.content, "base64").toString();
+          const sourceContent = parse(sourceText, {
+            format: schema.format,
+            delimiters: schema.delimiters,
+          });
+          if (!sourceContent || typeof sourceContent !== "object" || Array.isArray(sourceContent)) {
+            throw createHttpError("Duplicate source must contain a structured object.", 400);
+          }
+          duplicateSourceContentObject = sourceContent;
+
+          const modeledSource = deepMap(
+            sourceContent,
+            schema.fields,
+            (value, field) => {
+              const fieldType = field.type as string;
+              return readFns[fieldType]
+                ? readFns[fieldType](value, field, config || {})
+                : value;
+            },
+          );
+          const editorSource = sanitizeObject(
+            mergeDuplicateContent(sourceContent, modeledSource, true),
+          );
+          data.content = buildDuplicateContent({
+            source: editorSource,
+            field: operation.field,
+            value: duplicateValue,
+            draft: operation.draft,
+            fields: schema.fields,
+          });
+
+          const filename = generateFilename(schema.filename, schema, data.content);
+          if (!filename) throw createHttpError("The duplicate doesn't produce a valid filename.", 400);
+          const duplicateBasePath = filename.includes("/")
+            ? schema.path
+            : getParentPath(sourcePath);
+          normalizedPath = normalizePath(joinPathSegments([duplicateBasePath, filename]));
+          const collectionPath = normalizePath(schema.path);
+          if (
+            normalizedPath === ".."
+            || normalizedPath.startsWith("../")
+            || (
+              collectionPath
+              && normalizedPath !== collectionPath
+              && !normalizedPath.startsWith(`${collectionPath}/`)
+            )
+          ) {
+            throw createHttpError("The duplicate filename escapes the collection path.", 400);
+          }
+          if (normalizedPath === sourcePath) {
+            throw createHttpError("The duplicate must use a different filename.", 409);
+          }
+        }
 
         if (!normalizedPath.startsWith(schema.path)) throw new Error(`Invalid path "${params.path}" for ${data.type} "${data.name}".`);
 
@@ -122,7 +216,15 @@ export async function POST(
               ? validatedContentObject.listWrapper
               : validatedContentObject;
 
-            let finalContentObject = JSON.parse(JSON.stringify(unwrappedContentObject));
+            const sanitizedContentObject = sanitizeObject(unwrappedContentObject);
+            let finalContentObject = duplicateSourceContentObject
+              ? mergeSanitizedDuplicateContent(
+                  duplicateSourceContentObject,
+                  unwrappedContentObject,
+                  sanitizedContentObject,
+                  sanitizeObject,
+                )
+              : structuredClone(unwrappedContentObject);
 
             if (config?.object?.settings?.content?.merge && data.sha && !schema.list) {
               const octokit = createOctokitInstance(token);
@@ -150,7 +252,9 @@ export async function POST(
             }
             
             const stringifiedContentObject = stringify(
-              sanitizeObject(finalContentObject),
+              duplicateSourceContentObject
+                ? finalContentObject
+                : sanitizeObject(finalContentObject),
               {
                 format: schema.format,
                 delimiters: schema.delimiters

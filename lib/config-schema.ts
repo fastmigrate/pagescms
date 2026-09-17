@@ -305,6 +305,45 @@ const FilenameConfigSchema = z.union([
     .strict(),
 ]);
 
+const DuplicateOperationSchema = z.union([
+  z.boolean({
+    message: "'operations.duplicate' must be a boolean or an object.",
+  }),
+  z
+    .object(
+      {
+        label: z.string({
+          message: "'operations.duplicate.label' must be a string.",
+        }).optional(),
+        description: z.string({
+          message: "'operations.duplicate.description' must be a string.",
+        }).optional(),
+        field: z.string({
+          message: "'operations.duplicate.field' must be a string.",
+        }).regex(/^[a-zA-Z0-9-_]+(?:\.[a-zA-Z0-9-_]+)*$/, {
+          message: "'operations.duplicate.field' must be a valid field path.",
+        }).refine((value) => !value.split(".").some((part) => (
+          ["__proto__", "prototype", "constructor"].includes(part)
+        )), {
+          message: "'operations.duplicate.field' contains an unsafe path segment.",
+        }).optional(),
+        fieldLabel: z.string({
+          message: "'operations.duplicate.fieldLabel' must be a string.",
+        }).optional(),
+        button: z.string({
+          message: "'operations.duplicate.button' must be a string.",
+        }).optional(),
+        draft: z.boolean({
+          message: "'operations.duplicate.draft' must be a boolean.",
+        }).optional(),
+      },
+      {
+        message: "'operations.duplicate' must be a boolean or an object.",
+      },
+    )
+    .strict(),
+]);
+
 const ContentOperationsSchema = z
   .object({
     create: z
@@ -322,6 +361,7 @@ const ContentOperationsSchema = z
         message: "'operations.delete' must be a boolean.",
       })
       .optional(),
+    duplicate: DuplicateOperationSchema.optional(),
   })
   .strict();
 
@@ -893,6 +933,23 @@ const ConfigSchema = z
         }
         return field;
       };
+      const findFieldPath = (
+        fields: any[] | undefined,
+        matcher: (field: any) => boolean,
+        prefix?: string,
+      ): string | undefined => {
+        for (const candidate of fields ?? []) {
+          const field = resolveSortComponent(candidate);
+          if (!field) continue;
+          const fieldPath = prefix ? `${prefix}.${field.name}` : field.name;
+          if (!field.list && matcher(field)) return fieldPath;
+          if (field.type === "object" && !field.list) {
+            const nested = findFieldPath(field.fields, matcher, fieldPath);
+            if (nested) return nested;
+          }
+        }
+        return undefined;
+      };
       presets.forEach((preset: any, index: number) => {
         const presetPath = [...path, 'view', 'sortPresets', index];
         if (item.type !== 'collection') ctx.addIssue({ code: 'custom', message: 'Sort presets require a collection.', path: presetPath });
@@ -915,6 +972,151 @@ const ConfigSchema = z
       if (item.view?.default?.sortPreset) {
         if (!names.has(item.view.default.sortPreset)) ctx.addIssue({ code: 'custom', message: 'Unknown default sort preset.', path: [...path, 'view', 'default', 'sortPreset'] });
         if (item.view.default.sort != null || item.view.default.order != null) ctx.addIssue({ code: 'custom', message: 'Choose a default sort preset or a default column sort, not both.', path: [...path, 'view', 'default'] });
+      }
+
+      const duplicate = item.operations?.duplicate;
+      if (duplicate === true || (duplicate && typeof duplicate === "object")) {
+        const duplicatePath = [...path, "operations", "duplicate"];
+        const serializedFormats = new Set([
+          "yaml-frontmatter",
+          "json-frontmatter",
+          "toml-frontmatter",
+          "yaml",
+          "json",
+          "toml",
+        ]);
+        if (item.type !== "collection") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Entry duplication requires a collection.",
+            path: duplicatePath,
+          });
+        }
+        if (item.operations?.create === false) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Entry duplication requires 'operations.create' to be enabled.",
+            path: duplicatePath,
+          });
+        }
+        if (item.list) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Entry duplication isn't supported for root-list collections.",
+            path: duplicatePath,
+          });
+        }
+        const filenameForFormat = item.filename && typeof item.filename === "object"
+          ? item.filename.template
+          : item.filename ?? "{year}-{month}-{day}-{primary}.md";
+        const filenameExtension = filenameForFormat.split(".").pop()?.toLowerCase();
+        const inferredFormat = item.fields?.length > 0
+          ? filenameExtension === "json"
+            ? "json"
+            : filenameExtension === "toml"
+              ? "toml"
+              : filenameExtension === "yaml" || filenameExtension === "yml"
+                ? "yaml"
+                : "yaml-frontmatter"
+          : "raw";
+        if (!serializedFormats.has(item.format ?? inferredFormat)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Entry duplication requires a structured serialized format.",
+            path: duplicatePath,
+          });
+        }
+
+        const configuredField = typeof duplicate === "object" ? duplicate.field : undefined;
+        const inferredPrimaryField = item.view?.primary
+          ?? findFieldPath(item.fields, (field) => field.name === "title")
+          ?? findFieldPath(
+            item.fields,
+            (field) => !["object", "block"].includes(String(field.type)),
+          );
+        const duplicateField = configuredField ?? inferredPrimaryField;
+        if (duplicateField?.split(".").some((part: string) => (
+          ["__proto__", "prototype", "constructor"].includes(part)
+        ))) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Entry duplication field contains an unsafe path segment.",
+            path: [...duplicatePath, "field"],
+          });
+        }
+        const field = duplicateField ? findField(duplicateField) : undefined;
+        if (!field || !["string", "text"].includes(field.type)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Entry duplication requires a string or text primary field.",
+            path: [...duplicatePath, "field"],
+          });
+        }
+        if (duplicateField?.includes(".")) {
+          let ancestorFields = item.fields;
+          let hasOptionalAncestor = false;
+          for (const part of duplicateField.split(".").slice(0, -1)) {
+            const ancestor = ancestorFields
+              ?.map((candidate: any) => resolveSortComponent(candidate))
+              .find((candidate: any) => candidate?.name === part);
+            if (!ancestor || ancestor.type !== "object") break;
+            if (ancestor.required !== true) hasOptionalAncestor = true;
+            ancestorFields = ancestor.fields;
+          }
+          if (hasOptionalAncestor) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Entry duplication field cannot be nested below an optional object.",
+              path: [...duplicatePath, "field"],
+            });
+          }
+        }
+
+        const filenameTemplate = item.filename && typeof item.filename === "object"
+          ? item.filename.template
+          : item.filename ?? "{year}-{month}-{day}-{primary}.md";
+        if (item.subfolders === false && filenameTemplate.includes("/")) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Entry duplication cannot use a nested filename when subfolders are disabled.",
+            path: duplicatePath,
+          });
+        }
+        const reservedDateTokens = new Set([
+          "year", "month", "day", "hour", "minute", "second",
+        ]);
+        const filenameTokens = [...filenameTemplate.matchAll(/\{([^}]+)\}/gu)]
+          .map((match) => match[1]);
+        const filenameFields = filenameTokens.flatMap((token) => {
+          if (token.startsWith("fields.")) return [token.slice(7)];
+          if (reservedDateTokens.has(token) || token === "primary" || token === "slug") return [];
+          return [token];
+        });
+        const duplicateChangesFilename = duplicateField && (
+          filenameFields.includes(duplicateField)
+          || (
+            filenameTokens.some((token) => token === "primary" || token === "slug")
+            && duplicateField === inferredPrimaryField
+          )
+        );
+        if (!duplicateChangesFilename) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Entry duplication field must participate in the filename template.",
+            path: [...duplicatePath, "field"],
+          });
+        }
+
+        if (typeof duplicate === "object" && duplicate.draft === true) {
+          const draftField = findField("draft");
+          if (!draftField || draftField.type !== "boolean") {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Draft duplication requires a boolean 'draft' field.",
+              path: [...duplicatePath, "draft"],
+            });
+          }
+        }
       }
 
       const actions = Array.isArray(item.actions) ? item.actions : [];

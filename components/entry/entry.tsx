@@ -25,6 +25,7 @@ import {
 } from "@/lib/utils/file";
 import type { ApiSuccess, EntryData, EntryHistoryItem } from "@/types/api";
 import { EntryForm } from "./entry-form";
+import { EntryDuplicate } from "./entry-duplicate";
 import { EntryHistoryDropdown } from "./entry-history";
 import { EmptyCreate } from "@/components/empty-create";
 import { FileOptions } from "@/components/file/file-options";
@@ -679,6 +680,17 @@ export function Entry({
               )
               : <Button variant="outline" size="icon" className="shrink-0" disabled><History /></Button>
           )}
+          {path && schemaType === "collection" && operations.duplicate && schema && (
+            <EntryDuplicate
+              owner={config.owner}
+              repo={config.repo}
+              branch={config.branch}
+              name={name}
+              path={path}
+              schema={schema}
+              disabled={isBusy}
+            />
+          )}
           <Button
             type="submit"
             form="entry-form"
@@ -730,7 +742,7 @@ export function Entry({
         </div>
       )}
     </div>
-  ), [breadcrumbNode, canDelete, canRename, filenameChanged, filenameFieldMode, filenameValue, handleDelete, handleRename, hasRegisteredChanges, headerActionsNode, headerMeta, historyData, isBusy, isFilenameUnlocked, isFormDirty, isLoading, name, path, schemaType, sha, showFilenameField, showHeaderActions]);
+  ), [breadcrumbNode, canDelete, canRename, config.branch, config.owner, config.repo, filenameChanged, filenameFieldMode, filenameValue, handleDelete, handleRename, hasRegisteredChanges, headerActionsNode, headerMeta, historyData, isBusy, isFilenameUnlocked, isFormDirty, isLoading, name, operations.duplicate, path, schema, schemaType, sha, showFilenameField, showHeaderActions]);
 
   useRepoHeader({ header: headerNode });
 
