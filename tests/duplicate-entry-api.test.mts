@@ -18,6 +18,7 @@ test("the file API duplicates raw saved content through the normal create path",
   };
   let writtenPath = "";
   let writtenDocument: Record<string, unknown> | undefined;
+  let expectedSourcePath = "original.json";
 
   const schema = {
     name: "jobs",
@@ -51,7 +52,7 @@ test("the file API duplicates raw saved content through the normal create path",
     rest: {
       repos: {
         async getContent({ path }: { path: string }) {
-          assert.equal(path, "original.json");
+          assert.equal(path, expectedSourcePath);
           return {
             data: {
               type: "file",
@@ -101,7 +102,9 @@ test("the file API duplicates raw saved content through the normal create path",
     },
     "@/lib/schema": {
       deepMap: pickModeledFields,
-      generateFilename: (_pattern: string, _schema: unknown, content: Record<string, any>) => `${content.title.toLowerCase()}.json`,
+      generateFilename: (pattern: string, _schema: unknown, content: Record<string, any>) => (
+        pattern.replace("{primary}", content.title.toLowerCase())
+      ),
       generateZodSchema: (fields: Array<Record<string, any>>) => ({
         safeParse: (content: Record<string, unknown>) => ({
           success: true,
@@ -185,4 +188,33 @@ test("the file API duplicates raw saved content through the normal create path",
   assert.equal(writtenDocument?.draft, true);
   assert.deepEqual(writtenDocument?.future, { retained: true });
   assert.notEqual(writtenDocument?.id, originalId);
+
+  schema.path = "posts";
+  schema.filename = "news/{primary}.json";
+  expectedSourcePath = "posts/news/original.json";
+  writtenPath = "";
+  const nestedRequest = new Request(
+    "https://cms.test/api/o/r/main/files/posts%2Fnews%2Foriginal.json",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "content",
+        name: "jobs",
+        duplicate: { value: "Copy" },
+        onConflict: "error",
+      }),
+    },
+  );
+  const nestedResponse = await route.exports.POST(nestedRequest, {
+    params: Promise.resolve({
+      owner: "o",
+      repo: "r",
+      branch: "main",
+      path: expectedSourcePath,
+    }),
+  });
+
+  assert.equal(nestedResponse.status, 200);
+  assert.equal(writtenPath, "posts/news/copy.json");
 });

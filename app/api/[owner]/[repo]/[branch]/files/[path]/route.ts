@@ -135,7 +135,10 @@ export async function POST(
 
           const filename = generateFilename(schema.filename, schema, data.content);
           if (!filename) throw createHttpError("The duplicate doesn't produce a valid filename.", 400);
-          normalizedPath = joinPathSegments([getParentPath(sourcePath), filename]);
+          const duplicateBasePath = filename.includes("/")
+            ? schema.path
+            : getParentPath(sourcePath);
+          normalizedPath = joinPathSegments([duplicateBasePath, filename]);
           if (normalizedPath === sourcePath) {
             throw createHttpError("The duplicate must use a different filename.", 409);
           }

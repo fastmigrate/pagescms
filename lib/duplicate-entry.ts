@@ -24,6 +24,19 @@ const assertSafeKey = (key: string) => {
   }
 };
 
+const setOwnContentValue = (
+  target: Record<string, unknown>,
+  key: string,
+  value: unknown,
+) => {
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
+};
+
 const isPlainObject = (value: unknown): value is Record<string, unknown> => (
   value != null && typeof value === "object" && !Array.isArray(value)
 );
@@ -34,8 +47,7 @@ const cloneContentValue = (value: unknown): unknown => {
 
   const clone: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value)) {
-    assertSafeKey(key);
-    clone[key] = cloneContentValue(child);
+    setOwnContentValue(clone, key, cloneContentValue(child));
   }
   return clone;
 };
@@ -57,8 +69,8 @@ function mergeDuplicateContent(
 ): Record<string, unknown> {
   const result = cloneContentValue(source) as Record<string, unknown>;
   for (const [key, value] of Object.entries(modeled)) {
-    assertSafeKey(key);
-    result[key] = mergeDuplicateValue(result[key], value);
+    const sourceValue = Object.hasOwn(result, key) ? result[key] : undefined;
+    setOwnContentValue(result, key, mergeDuplicateValue(sourceValue, value));
   }
   return result;
 }
@@ -102,11 +114,11 @@ const setValueAtPath = (
   for (const part of parts.slice(0, -1)) {
     const existing = Object.hasOwn(current, part) ? current[part] : undefined;
     if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
-      current[part] = {};
+      setOwnContentValue(current, part, {});
     }
     current = current[part] as Record<string, unknown>;
   }
-  current[parts[parts.length - 1]] = value;
+  setOwnContentValue(current, parts[parts.length - 1], value);
 };
 
 const regenerateUuidFields = (
@@ -116,20 +128,20 @@ const regenerateUuidFields = (
   const visitBlock = (value: unknown, field: Record<string, any>) => {
     if (!isPlainObject(value)) return;
     const blockKey = field.blockKey || "_block";
+    const blockName = Object.hasOwn(value, blockKey) ? value[blockKey] : undefined;
     const block = field.blocks?.find((item: Record<string, any>) => (
-      item.name === value[blockKey]
+      item.name === blockName
     ));
     if (block?.fields) regenerateUuidFields(value, block.fields);
   };
 
   for (const field of fields) {
-    assertSafeKey(field.name);
-    const value = content[field.name];
+    const value = Object.hasOwn(content, field.name) ? content[field.name] : undefined;
 
     if (field.list) {
       if (!Array.isArray(value)) continue;
       if (field.type === "uuid") {
-        content[field.name] = value.map(() => crypto.randomUUID());
+        setOwnContentValue(content, field.name, value.map(() => crypto.randomUUID()));
       } else if (field.type === "object") {
         value.forEach((item) => {
           if (isPlainObject(item)) regenerateUuidFields(item, field.fields ?? []);
@@ -141,9 +153,9 @@ const regenerateUuidFields = (
     }
 
     if (field.type === "uuid") {
-      content[field.name] = field.default !== undefined
+      setOwnContentValue(content, field.name, field.default !== undefined
         ? cloneContentValue(field.default)
-        : crypto.randomUUID();
+        : crypto.randomUUID());
     } else if (field.type === "object" && isPlainObject(value)) {
       regenerateUuidFields(value, field.fields ?? []);
     } else if (field.type === "block") {

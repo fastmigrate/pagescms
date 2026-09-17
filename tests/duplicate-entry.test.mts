@@ -54,6 +54,31 @@ test("preserves unmodeled source fields while replacing modeled values", () => {
   });
 });
 
+test("preserves reserved-name content keys without prototype mutation", () => {
+  const source = JSON.parse(`{
+    "title": "Original",
+    "__proto__": {"retained": true},
+    "constructor": "stored constructor",
+    "prototype": "stored prototype"
+  }`) as Record<string, unknown>;
+  const before = ({} as Record<string, unknown>).retained;
+
+  const duplicate = buildDuplicateContent({
+    source,
+    field: "title",
+    value: "Copy",
+    draft: false,
+  });
+
+  assert.equal(duplicate.title, "Copy");
+  assert.deepEqual(Object.getOwnPropertyDescriptor(duplicate, "__proto__")?.value, {
+    retained: true,
+  });
+  assert.equal(duplicate.constructor, "stored constructor");
+  assert.equal(duplicate.prototype, "stored prototype");
+  assert.equal(({} as Record<string, unknown>).retained, before);
+});
+
 test("regenerates UUID identities throughout duplicated content", () => {
   const source = {
     id: "11111111-1111-4111-8111-111111111111",

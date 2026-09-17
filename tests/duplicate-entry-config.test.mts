@@ -75,6 +75,9 @@ test("accepts opt-in entry duplication with localized labels", () => {
   });
   assert.equal(result.success, true, JSON.stringify(result.error?.issues));
   assert.equal(ConfigSchema.safeParse({ content: [collection(true)] }).success, true);
+  assert.equal(ConfigSchema.safeParse({
+    content: [collection(true, { format: undefined })],
+  }).success, true);
   assert.equal(ConfigSchema.safeParse({ content: [collection(false)] }).success, true);
   assert.equal(ConfigSchema.safeParse({
     content: [collection(true, {
@@ -123,6 +126,7 @@ test("rejects unsafe or unsupported duplicate configurations", () => {
     }),
     collection(true, { list: true }),
     collection(true, { list: { collapsible: true } }),
+    collection(true, { format: "raw" }),
     collection({ field: "title", unknown: true }),
     collection({ field: "__proto__.polluted" }),
     collection({ field: "title" }, {
@@ -136,9 +140,41 @@ test("rejects unsafe or unsupported duplicate configurations", () => {
       view: { primary: "constructor" },
       fields: [{ name: "constructor", type: "string" }],
     }),
+    collection({ field: "metadata.title" }, {
+      filename: "{fields.metadata.title}.json",
+      view: { primary: "metadata.title" },
+      fields: [{
+        name: "metadata",
+        type: "object",
+        fields: [
+          { name: "title", type: "string", required: true },
+          { name: "description", type: "string", required: true },
+        ],
+      }],
+    }),
   ];
 
   for (const value of cases) {
     assert.equal(ConfigSchema.safeParse({ content: [value] }).success, false);
   }
+});
+
+test("accepts a nested duplicate field when every object ancestor is required", () => {
+  const result = ConfigSchema.safeParse({
+    content: [collection({ field: "metadata.title" }, {
+      filename: "{fields.metadata.title}.json",
+      view: { primary: "metadata.title" },
+      fields: [{
+        name: "metadata",
+        type: "object",
+        required: true,
+        fields: [
+          { name: "title", type: "string", required: true },
+          { name: "description", type: "string", required: true },
+        ],
+      }],
+    })],
+  });
+
+  assert.equal(result.success, true, JSON.stringify(result.error?.issues));
 });

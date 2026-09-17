@@ -977,6 +977,14 @@ const ConfigSchema = z
       const duplicate = item.operations?.duplicate;
       if (duplicate === true || (duplicate && typeof duplicate === "object")) {
         const duplicatePath = [...path, "operations", "duplicate"];
+        const serializedFormats = new Set([
+          "yaml-frontmatter",
+          "json-frontmatter",
+          "toml-frontmatter",
+          "yaml",
+          "json",
+          "toml",
+        ]);
         if (item.type !== "collection") {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
@@ -995,6 +1003,26 @@ const ConfigSchema = z
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: "Entry duplication isn't supported for root-list collections.",
+            path: duplicatePath,
+          });
+        }
+        const filenameForFormat = item.filename && typeof item.filename === "object"
+          ? item.filename.template
+          : item.filename ?? "{year}-{month}-{day}-{primary}.md";
+        const filenameExtension = filenameForFormat.split(".").pop()?.toLowerCase();
+        const inferredFormat = item.fields?.length > 0
+          ? filenameExtension === "json"
+            ? "json"
+            : filenameExtension === "toml"
+              ? "toml"
+              : filenameExtension === "yaml" || filenameExtension === "yml"
+                ? "yaml"
+                : "yaml-frontmatter"
+          : "raw";
+        if (!serializedFormats.has(item.format ?? inferredFormat)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Entry duplication requires a structured serialized format.",
             path: duplicatePath,
           });
         }
@@ -1023,6 +1051,25 @@ const ConfigSchema = z
             message: "Entry duplication requires a string or text primary field.",
             path: [...duplicatePath, "field"],
           });
+        }
+        if (duplicateField?.includes(".")) {
+          let ancestorFields = item.fields;
+          let hasOptionalAncestor = false;
+          for (const part of duplicateField.split(".").slice(0, -1)) {
+            const ancestor = ancestorFields
+              ?.map((candidate: any) => resolveSortComponent(candidate))
+              .find((candidate: any) => candidate?.name === part);
+            if (!ancestor || ancestor.type !== "object") break;
+            if (ancestor.required !== true) hasOptionalAncestor = true;
+            ancestorFields = ancestor.fields;
+          }
+          if (hasOptionalAncestor) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Entry duplication field cannot be nested below an optional object.",
+              path: [...duplicatePath, "field"],
+            });
+          }
         }
 
         const filenameTemplate = item.filename && typeof item.filename === "object"
