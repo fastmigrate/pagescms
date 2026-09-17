@@ -38,16 +38,19 @@ test("preserves unmodeled source fields while replacing modeled values", () => {
     {
       title: "Stored title",
       future: { retained: true, list: ["stored"] },
+      items: [{ label: "Stored item", future: { retained: true } }],
     },
     {
       title: "New title",
       future: { list: ["updated"] },
+      items: [{ label: "Updated item" }],
     },
   );
 
   assert.deepEqual(merged, {
     title: "New title",
     future: { retained: true, list: ["updated"] },
+    items: [{ label: "Updated item", future: { retained: true } }],
   });
 });
 

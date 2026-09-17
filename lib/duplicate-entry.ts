@@ -40,22 +40,28 @@ const cloneContentValue = (value: unknown): unknown => {
   return clone;
 };
 
-const mergeDuplicateContent = (
+const mergeDuplicateValue = (source: unknown, modeled: unknown): unknown => {
+  if (Array.isArray(modeled)) {
+    if (!Array.isArray(source)) return cloneContentValue(modeled);
+    return modeled.map((value, index) => mergeDuplicateValue(source[index], value));
+  }
+  if (isPlainObject(modeled) && isPlainObject(source)) {
+    return mergeDuplicateContent(source, modeled);
+  }
+  return cloneContentValue(modeled);
+};
+
+function mergeDuplicateContent(
   source: Record<string, unknown>,
   modeled: Record<string, unknown>,
-): Record<string, unknown> => {
+): Record<string, unknown> {
   const result = cloneContentValue(source) as Record<string, unknown>;
   for (const [key, value] of Object.entries(modeled)) {
     assertSafeKey(key);
-    result[key] = isPlainObject(value) && isPlainObject(result[key])
-      ? mergeDuplicateContent(
-          result[key] as Record<string, unknown>,
-          value,
-        )
-      : cloneContentValue(value);
+    result[key] = mergeDuplicateValue(result[key], value);
   }
   return result;
-};
+}
 
 const resolveDuplicateOperation = (
   schema: Record<string, any>,

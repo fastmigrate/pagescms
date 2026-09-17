@@ -137,7 +137,8 @@ existing file-save API with conflict renaming disabled. Normal create
 permissions, schema validation, serialization, commit identity/message, cache
 updates, and GitHub branch rules therefore remain authoritative. Unsaved form
 changes are never copied. Unmodeled stored keys are preserved, while
-schema-defined UUID identities are regenerated for the new entry. Root-list
+schema-defined UUID identities are regenerated for the new entry. Preservation
+also applies inside corresponding object and block list items. Root-list
 collections, non-text duplicate fields, and prototype-related field paths are
 rejected by configuration validation and guarded again at runtime. The prompt
 field must participate in the filename template, and inferred primary fields
