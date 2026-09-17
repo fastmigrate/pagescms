@@ -54,6 +54,19 @@ test("preserves unmodeled source fields while replacing modeled values", () => {
   });
 });
 
+test("does not materialize modeled containers absent from the saved source", () => {
+  const merged = mergeDuplicateContent(
+    { title: "Stored title" },
+    {
+      title: "Stored title",
+      metadata: { id: undefined, description: undefined },
+    },
+    true,
+  );
+
+  assert.deepEqual(merged, { title: "Stored title" });
+});
+
 test("preserves reserved-name content keys without prototype mutation", () => {
   const source = JSON.parse(`{
     "title": "Original",

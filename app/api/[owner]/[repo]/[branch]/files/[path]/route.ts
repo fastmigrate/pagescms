@@ -124,7 +124,7 @@ export async function POST(
                 : value;
             },
           );
-          const editorSource = mergeDuplicateContent(sourceContent, modeledSource);
+          const editorSource = mergeDuplicateContent(sourceContent, modeledSource, true);
           data.content = buildDuplicateContent({
             source: editorSource,
             field: operation.field,
@@ -138,7 +138,15 @@ export async function POST(
           const duplicateBasePath = filename.includes("/")
             ? schema.path
             : getParentPath(sourcePath);
-          normalizedPath = joinPathSegments([duplicateBasePath, filename]);
+          normalizedPath = normalizePath(joinPathSegments([duplicateBasePath, filename]));
+          const collectionPath = normalizePath(schema.path);
+          if (
+            collectionPath
+            && normalizedPath !== collectionPath
+            && !normalizedPath.startsWith(`${collectionPath}/`)
+          ) {
+            throw createHttpError("The duplicate filename escapes the collection path.", 400);
+          }
           if (normalizedPath === sourcePath) {
             throw createHttpError("The duplicate must use a different filename.", 409);
           }
@@ -200,10 +208,11 @@ export async function POST(
               ? validatedContentObject.listWrapper
               : validatedContentObject;
 
+            const sanitizedContentObject = sanitizeObject(unwrappedContentObject);
             let finalContentObject = duplicateSourceContentObject
               ? mergeDuplicateContent(
                   duplicateSourceContentObject,
-                  unwrappedContentObject,
+                  sanitizedContentObject,
                 )
               : structuredClone(unwrappedContentObject);
 
@@ -233,7 +242,9 @@ export async function POST(
             }
             
             const stringifiedContentObject = stringify(
-              sanitizeObject(finalContentObject),
+              duplicateSourceContentObject
+                ? finalContentObject
+                : sanitizeObject(finalContentObject),
               {
                 format: schema.format,
                 delimiters: schema.delimiters

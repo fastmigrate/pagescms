@@ -52,13 +52,19 @@ const cloneContentValue = (value: unknown): unknown => {
   return clone;
 };
 
-const mergeDuplicateValue = (source: unknown, modeled: unknown): unknown => {
+const mergeDuplicateValue = (
+  source: unknown,
+  modeled: unknown,
+  existingKeysOnly: boolean,
+): unknown => {
   if (Array.isArray(modeled)) {
     if (!Array.isArray(source)) return cloneContentValue(modeled);
-    return modeled.map((value, index) => mergeDuplicateValue(source[index], value));
+    return modeled.map((value, index) => (
+      mergeDuplicateValue(source[index], value, existingKeysOnly)
+    ));
   }
   if (isPlainObject(modeled) && isPlainObject(source)) {
-    return mergeDuplicateContent(source, modeled);
+    return mergeDuplicateContent(source, modeled, existingKeysOnly);
   }
   return cloneContentValue(modeled);
 };
@@ -66,11 +72,18 @@ const mergeDuplicateValue = (source: unknown, modeled: unknown): unknown => {
 function mergeDuplicateContent(
   source: Record<string, unknown>,
   modeled: Record<string, unknown>,
+  existingKeysOnly = false,
 ): Record<string, unknown> {
   const result = cloneContentValue(source) as Record<string, unknown>;
   for (const [key, value] of Object.entries(modeled)) {
-    const sourceValue = Object.hasOwn(result, key) ? result[key] : undefined;
-    setOwnContentValue(result, key, mergeDuplicateValue(sourceValue, value));
+    const sourceHasKey = Object.hasOwn(result, key);
+    if (existingKeysOnly && !sourceHasKey) continue;
+    const sourceValue = sourceHasKey ? result[key] : undefined;
+    setOwnContentValue(
+      result,
+      key,
+      mergeDuplicateValue(sourceValue, value, existingKeysOnly),
+    );
   }
   return result;
 }

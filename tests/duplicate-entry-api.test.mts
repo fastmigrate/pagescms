@@ -15,6 +15,10 @@ test("the file API duplicates raw saved content through the normal create path",
     draft: false,
     id: originalId,
     future: { retained: true },
+    futureEmptyString: "",
+    futureNull: null,
+    futureEmptyObject: {},
+    futureEmptyArray: [],
   };
   let writtenPath = "";
   let writtenDocument: Record<string, unknown> | undefined;
@@ -36,6 +40,14 @@ test("the file API duplicates raw saved content through the normal create path",
       { name: "title", type: "string", required: true },
       { name: "draft", type: "boolean" },
       { name: "id", type: "uuid" },
+      {
+        name: "metadata",
+        type: "object",
+        fields: [
+          { name: "id", type: "uuid" },
+          { name: "description", type: "string", required: true },
+        ],
+      },
     ],
   };
 
@@ -45,8 +57,33 @@ test("the file API duplicates raw saved content through the normal create path",
     apply: (value: unknown, field: Record<string, any>) => unknown,
   ) => Object.fromEntries(fields.map((field) => [
     field.name,
-    apply(input[field.name], field),
+    field.type === "object"
+      ? pickModeledFields(
+          (input[field.name] ?? {}) as Record<string, unknown>,
+          field.fields ?? [],
+          apply,
+        )
+      : apply(input[field.name], field),
   ]));
+
+  const sanitizeObject = (value: any): any => {
+    if (Array.isArray(value)) {
+      return value
+        .map(sanitizeObject)
+        .filter((item) => item != null && item !== "");
+    }
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value)
+        .map(([key, child]) => [key, sanitizeObject(child)])
+        .filter(([, child]) => (
+          child != null
+          && child !== ""
+          && (!Array.isArray(child) || child.length > 0)
+          && (typeof child !== "object" || Array.isArray(child) || Object.keys(child).length > 0)
+        )));
+    }
+    return value;
+  };
 
   const octokit = {
     rest: {
@@ -113,7 +150,7 @@ test("the file API duplicates raw saved content through the normal create path",
       }),
       getPrimaryField: () => "title",
       getSchemaByName: () => schema,
-      sanitizeObject: (value: unknown) => value,
+      sanitizeObject,
     },
     "@/lib/config-store": {
       getConfig: async () => ({ object: { content: [schema] } }),
@@ -124,7 +161,15 @@ test("the file API duplicates raw saved content through the normal create path",
       getFileName: (path: string) => path.split("/").pop() ?? "",
       getParentPath: (path: string) => path.split("/").slice(0, -1).join("/"),
       joinPathSegments: (parts: string[]) => parts.filter(Boolean).join("/"),
-      normalizePath: (path: string) => path,
+      normalizePath: (path: string) => path.split("/").reduce((parts: string[], part) => {
+        if (!part || part === ".") return parts;
+        if (part === "..") {
+          parts.pop();
+          return parts;
+        }
+        parts.push(part);
+        return parts;
+      }, []).join("/"),
       serializedTypes: ["json"],
     },
     "@/lib/authz-shared": { assertGithubIdentity: () => {} },
@@ -187,6 +232,11 @@ test("the file API duplicates raw saved content through the normal create path",
   assert.equal(writtenDocument?.title, "Copy");
   assert.equal(writtenDocument?.draft, true);
   assert.deepEqual(writtenDocument?.future, { retained: true });
+  assert.equal(writtenDocument?.futureEmptyString, "");
+  assert.equal(writtenDocument?.futureNull, null);
+  assert.deepEqual(writtenDocument?.futureEmptyObject, {});
+  assert.deepEqual(writtenDocument?.futureEmptyArray, []);
+  assert.equal(Object.hasOwn(writtenDocument ?? {}, "metadata"), false);
   assert.notEqual(writtenDocument?.id, originalId);
 
   schema.path = "posts";
@@ -217,4 +267,30 @@ test("the file API duplicates raw saved content through the normal create path",
 
   assert.equal(nestedResponse.status, 200);
   assert.equal(writtenPath, "posts/news/copy.json");
+
+  schema.filename = "../outside/{primary}.json";
+  const escapingRequest = new Request(
+    "https://cms.test/api/o/r/main/files/posts%2Fnews%2Foriginal.json",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "content",
+        name: "jobs",
+        duplicate: { value: "Copy" },
+        onConflict: "error",
+      }),
+    },
+  );
+  const escapingResponse = await route.exports.POST(escapingRequest, {
+    params: Promise.resolve({
+      owner: "o",
+      repo: "r",
+      branch: "main",
+      path: expectedSourcePath,
+    }),
+  });
+
+  assert.equal(escapingResponse.status, 400);
+  assert.match(await escapingResponse.text(), /escapes the collection path/u);
 });
