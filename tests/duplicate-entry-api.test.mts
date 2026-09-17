@@ -24,6 +24,7 @@ test("the file API duplicates raw saved content through the normal create path",
   let writtenPath = "";
   let writtenDocument: Record<string, unknown> | undefined;
   let expectedSourcePath = "original.json";
+  let rejectNextCreateAsConflict = false;
 
   const schema = {
     name: "jobs",
@@ -100,6 +101,13 @@ test("the file API duplicates raw saved content through the normal create path",
           };
         },
         async createOrUpdateFileContents(input: Record<string, any>) {
+          if (rejectNextCreateAsConflict) {
+            rejectNextCreateAsConflict = false;
+            throw Object.assign(new Error("File already exists"), {
+              status: 422,
+              response: { data: { message: "sha wasn't supplied" } },
+            });
+          }
           writtenPath = input.path;
           writtenDocument = JSON.parse(Buffer.from(input.content, "base64").toString());
           return {
@@ -221,7 +229,6 @@ test("the file API duplicates raw saved content through the normal create path",
       type: "content",
       name: "jobs",
       duplicate: { value: "Copy" },
-      onConflict: "error",
     }),
   });
   const response = await route.exports.POST(request, {
@@ -245,6 +252,28 @@ test("the file API duplicates raw saved content through the normal create path",
   assert.equal(Object.hasOwn(writtenDocument ?? {}, "summary"), false);
   assert.equal(Object.hasOwn(writtenDocument ?? {}, "metadata"), false);
   assert.notEqual(writtenDocument?.id, originalId);
+
+  rejectNextCreateAsConflict = true;
+  const conflictingRequest = new Request("https://cms.test/api/o/r/main/files/original.json", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      type: "content",
+      name: "jobs",
+      duplicate: { value: "Copy" },
+    }),
+  });
+  const conflictingResponse = await route.exports.POST(conflictingRequest, {
+    params: Promise.resolve({
+      owner: "o",
+      repo: "r",
+      branch: "main",
+      path: "original.json",
+    }),
+  });
+
+  assert.equal(conflictingResponse.status, 409);
+  assert.match(await conflictingResponse.text(), /already exists/u);
 
   schema.path = "posts";
   schema.filename = "news/{primary}.json";

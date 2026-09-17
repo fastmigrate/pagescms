@@ -95,6 +95,20 @@ test("removes empty modeled values while preserving empty unmodeled values", () 
   );
 });
 
+test("preserves unknown children when their modeled container sanitizes away", () => {
+  const source = {
+    metadata: { known: null, future: "keep" },
+  };
+  const modeled = {
+    metadata: { known: null },
+  };
+
+  assert.deepEqual(
+    mergeSanitizedDuplicateContent(source, modeled, {}),
+    { metadata: { future: "keep" } },
+  );
+});
+
 test("keeps raw list metadata aligned when empty modeled items are removed", () => {
   const source = {
     items: [null, { label: "Second", futureEmpty: "" }],

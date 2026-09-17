@@ -136,7 +136,22 @@ const mergeSanitizedDuplicateContent = (
   const result = cloneContentValue(source) as Record<string, unknown>;
   for (const [key, modeledValue] of Object.entries(modeled)) {
     if (!Object.hasOwn(sanitizedModeled, key)) {
-      delete result[key];
+      const sourceValue = Object.hasOwn(result, key) ? result[key] : undefined;
+      if (isPlainObject(sourceValue) && isPlainObject(modeledValue)) {
+        const residualValue = mergeSanitizedDuplicateContent(
+          sourceValue,
+          modeledValue,
+          {},
+          sanitizeValue,
+        );
+        if (Object.keys(residualValue).length > 0) {
+          setOwnContentValue(result, key, residualValue);
+        } else {
+          delete result[key];
+        }
+      } else {
+        delete result[key];
+      }
       continue;
     }
     const sourceValue = Object.hasOwn(result, key) ? result[key] : undefined;

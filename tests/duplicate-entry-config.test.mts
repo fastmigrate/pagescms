@@ -99,6 +99,15 @@ test("accepts opt-in entry duplication with localized labels", () => {
       ],
     })],
   }).success, true);
+  assert.equal(ConfigSchema.safeParse({
+    content: [collection(true, {
+      view: {},
+      fields: [
+        { name: "tags", type: "string", list: true },
+        { name: "name", type: "string" },
+      ],
+    })],
+  }).success, true);
 });
 
 test("primary inference skips scalar fields nested in object lists", () => {
@@ -110,6 +119,12 @@ test("primary inference skips scalar fields nested in object lists", () => {
         list: true,
         fields: [{ name: "title", type: "string" }],
       },
+      { name: "name", type: "string" },
+    ],
+  }), "name");
+  assert.equal(getPrimaryField({
+    fields: [
+      { name: "tags", type: "string", list: true },
       { name: "name", type: "string" },
     ],
   }), "name");

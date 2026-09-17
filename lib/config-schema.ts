@@ -942,7 +942,7 @@ const ConfigSchema = z
           const field = resolveSortComponent(candidate);
           if (!field) continue;
           const fieldPath = prefix ? `${prefix}.${field.name}` : field.name;
-          if (matcher(field)) return fieldPath;
+          if (!field.list && matcher(field)) return fieldPath;
           if (field.type === "object" && !field.list) {
             const nested = findFieldPath(field.fields, matcher, fieldPath);
             if (nested) return nested;

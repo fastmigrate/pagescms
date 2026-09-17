@@ -385,7 +385,7 @@ function findNestedFieldPath(
   for (const field of fields) {
     const path = prefix ? `${prefix}.${field.name}` : field.name;
 
-    if (matcher(field)) {
+    if (!field.list && matcher(field)) {
       return path;
     }
 

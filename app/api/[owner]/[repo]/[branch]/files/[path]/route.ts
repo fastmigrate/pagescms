@@ -48,7 +48,9 @@ export async function POST(
     if (!config && normalizedPath !== ".pages.yml") throw new Error(`Configuration not found for ${params.owner}/${params.repo}/${params.branch}.`);
 
     const data: any = await readFileRequest(request);
-    const onConflict = data.onConflict === "error" ? "error" : "rename";
+    const onConflict = data.duplicate != null || data.onConflict === "error"
+      ? "error"
+      : "rename";
 
     let contentBase64;
     let schema;
