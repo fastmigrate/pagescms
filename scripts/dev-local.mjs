@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import nextEnv from "@next/env";
 import {
   getPackageManagerInvocation,
+  getInheritedSandboxKeys,
   isLocalSandboxDatabaseUrl,
   isPlaceholderValue,
   isValidCryptoKey,
@@ -25,6 +26,13 @@ const requiredGitHubKeys = [
 
 if (!existsSync(envPath)) {
   fail("Missing .env.local. Copy .env.local.example, then configure a GitHub App installed only on a sandbox repository.");
+}
+
+const inheritedSandboxKeys = getInheritedSandboxKeys();
+if (inheritedSandboxKeys.length > 0) {
+  fail(
+    `Refusing inherited sandbox credentials (${inheritedSandboxKeys.join(", ")}). Unset them and keep local CMS credentials only in .env.local.`,
+  );
 }
 
 loadEnvConfig(root);

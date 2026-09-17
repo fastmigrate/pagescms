@@ -7,8 +7,34 @@ const placeholderValues = {
   GITHUB_APP_CLIENT_SECRET: "your-github-app-client-secret",
 };
 
+const sandboxOnlyEnvironmentKeys = new Set([
+  "ADMIN_EMAILS",
+  "AUTH_SECRET",
+  "BASE_URL",
+  "BETTER_AUTH_SECRET",
+  "BETTER_AUTH_URL",
+  "CRYPTO_KEY",
+  "DATABASE_URL",
+  "EMAIL_FROM",
+  "EMAIL_PROVIDER",
+  "PAGESCMS_FIXTURES_ENABLED",
+]);
+
 const isPlaceholderValue = (key, value) =>
   !value || placeholderValues[key] === value.trim();
+
+const getInheritedSandboxKeys = (environment = process.env) =>
+  Object.entries(environment)
+    .filter(
+      ([key, value]) =>
+        value &&
+        (sandboxOnlyEnvironmentKeys.has(key) ||
+          ["GITHUB_APP_", "RESEND_", "SMTP_"].some((prefix) =>
+            key.startsWith(prefix),
+          )),
+    )
+    .map(([key]) => key)
+    .sort();
 
 const isValidCryptoKey = (value) => {
   const normalized = value?.trim() || "";
@@ -68,6 +94,7 @@ const getPackageManagerInvocation = (
 export {
   buildFixtureEnvironment,
   getPackageManagerInvocation,
+  getInheritedSandboxKeys,
   isLocalSandboxDatabaseUrl,
   isPlaceholderValue,
   isValidCryptoKey,

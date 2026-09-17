@@ -73,6 +73,9 @@ npm run dev:local
 
 Stop the retained development database with `npm run dev:local:down`. Customer
 repositories must not be used for local feature development.
+The launcher refuses inherited GitHub, auth, email, URL, crypto, database, or
+fixture values; keep sandbox configuration only in `.env.local` so a parent
+shell cannot silently replace it with customer or production configuration.
 
 The sandbox path is intended for checks that fixtures cannot represent:
 

@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   buildFixtureEnvironment,
   getPackageManagerInvocation,
+  getInheritedSandboxKeys,
   isLocalSandboxDatabaseUrl,
   isPlaceholderValue,
   isValidCryptoKey,
@@ -17,6 +18,26 @@ test("fixture environment injection is shell-independent", () => {
     PATH: "test",
     PAGESCMS_FIXTURES_ENABLED: "true",
   });
+});
+
+test("authenticated local development rejects inherited sandbox credentials", () => {
+  assert.deepEqual(
+    getInheritedSandboxKeys({
+      BASE_URL: "https://cms.example.com",
+      DATABASE_URL: "postgresql://remote/db",
+      GITHUB_APP_CLIENT_SECRET: "customer-secret",
+      SMTP_PASSWORD: "customer-mail-secret",
+      PATH: "/bin",
+      EMPTY: "",
+    }),
+    [
+      "BASE_URL",
+      "DATABASE_URL",
+      "GITHUB_APP_CLIENT_SECRET",
+      "SMTP_PASSWORD",
+    ],
+  );
+  assert.deepEqual(getInheritedSandboxKeys({ PATH: "/bin" }), []);
 });
 
 test("local npm commands run through Node and npm_execpath on every platform", () => {
