@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   buildFixtureEnvironment,
+  buildSandboxEnvFiles,
   getPackageManagerInvocation,
   getInheritedSandboxKeys,
   isLocalSandboxDatabaseUrl,
@@ -14,10 +15,25 @@ import {
 } from "../scripts/dev-environment.mjs";
 
 test("fixture environment injection is shell-independent", () => {
-  assert.deepEqual(buildFixtureEnvironment({ PATH: "test" }), {
+  const fixtureEnvironment = buildFixtureEnvironment({
     PATH: "test",
-    PAGESCMS_FIXTURES_ENABLED: "true",
+    DATABASE_URL: "postgresql://production/db",
+    GITHUB_APP_CLIENT_SECRET: "customer-secret",
+    SMTP_PASSWORD: "customer-mail-secret",
   });
+
+  assert.equal(fixtureEnvironment.PATH, "test");
+  assert.equal(fixtureEnvironment.PAGESCMS_FIXTURES_ENABLED, "true");
+  assert.equal(fixtureEnvironment.DATABASE_URL, "");
+  assert.equal(fixtureEnvironment.GITHUB_APP_CLIENT_SECRET, "");
+  assert.equal(fixtureEnvironment.SMTP_PASSWORD, "");
+  assert.equal(fixtureEnvironment.CRYPTO_KEY, "");
+});
+
+test("authenticated sandbox loading is limited to .env.local contents", () => {
+  assert.deepEqual(buildSandboxEnvFiles("/repo/.env.local", "KEY=value\n"), [
+    { path: "/repo/.env.local", contents: "KEY=value\n" },
+  ]);
 });
 
 test("authenticated local development rejects inherited sandbox credentials", () => {
@@ -55,6 +71,17 @@ test("the sandbox database is published on loopback only", async () => {
   const compose = await readFile(new URL("../compose.dev.yml", import.meta.url), "utf8");
 
   assert.match(compose, /127\.0\.0\.1:\$\{PAGESCMS_POSTGRES_PORT:-5432\}:5432/u);
+  assert.doesNotMatch(compose, /^name:/mu);
+});
+
+test("the authenticated launcher loads only the explicit sandbox file", async () => {
+  const launcher = await readFile(
+    new URL("../scripts/dev-local.mjs", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(launcher, /processEnv\(\s*buildSandboxEnvFiles\(envPath,/u);
+  assert.doesNotMatch(launcher, /loadEnvConfig/u);
 });
 
 test("authenticated local development refuses remote or mismatched databases", () => {
@@ -80,6 +107,12 @@ test("authenticated local development refuses remote or mismatched databases", (
   assert.equal(
     isLocalSandboxDatabaseUrl(
       "postgresql://pagescms:pagescms@localhost:55432/pagescms",
+    ),
+    false,
+  );
+  assert.equal(
+    isLocalSandboxDatabaseUrl(
+      "postgresql://pagescms:pagescms@[::1]:5432/pagescms",
     ),
     false,
   );

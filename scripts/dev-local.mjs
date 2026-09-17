@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import nextEnv from "@next/env";
 import {
+  buildSandboxEnvFiles,
   getPackageManagerInvocation,
   getInheritedSandboxKeys,
   isLocalSandboxDatabaseUrl,
@@ -11,7 +12,7 @@ import {
   isValidCryptoKey,
 } from "./dev-environment.mjs";
 
-const { loadEnvConfig } = nextEnv;
+const { processEnv } = nextEnv;
 
 const root = process.cwd();
 const envPath = resolve(root, ".env.local");
@@ -35,7 +36,12 @@ if (inheritedSandboxKeys.length > 0) {
   );
 }
 
-loadEnvConfig(root);
+processEnv(
+  buildSandboxEnvFiles(envPath, readFileSync(envPath, "utf8")),
+  root,
+  console,
+  true,
+);
 
 for (const key of requiredGitHubKeys) {
   const value = process.env[key]?.trim();

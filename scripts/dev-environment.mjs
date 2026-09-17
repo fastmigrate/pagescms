@@ -20,6 +20,24 @@ const sandboxOnlyEnvironmentKeys = new Set([
   "PAGESCMS_FIXTURES_ENABLED",
 ]);
 
+const fixtureIsolatedEnvironmentKeys = new Set([
+  ...sandboxOnlyEnvironmentKeys,
+  ...Object.keys(placeholderValues),
+  "RESEND_API_KEY",
+  "RESEND_FROM_EMAIL",
+  "SMTP_HOST",
+  "SMTP_PASSWORD",
+  "SMTP_PORT",
+  "SMTP_SECURE",
+  "SMTP_USER",
+]);
+
+const isSandboxOnlyEnvironmentKey = (key) =>
+  sandboxOnlyEnvironmentKeys.has(key) ||
+  ["GITHUB_APP_", "RESEND_", "SMTP_"].some((prefix) =>
+    key.startsWith(prefix),
+  );
+
 const isPlaceholderValue = (key, value) =>
   !value || placeholderValues[key] === value.trim();
 
@@ -27,11 +45,7 @@ const getInheritedSandboxKeys = (environment = process.env) =>
   Object.entries(environment)
     .filter(
       ([key, value]) =>
-        value &&
-        (sandboxOnlyEnvironmentKeys.has(key) ||
-          ["GITHUB_APP_", "RESEND_", "SMTP_"].some((prefix) =>
-            key.startsWith(prefix),
-          )),
+        value && isSandboxOnlyEnvironmentKey(key),
     )
     .map(([key]) => key)
     .sort();
@@ -62,7 +76,7 @@ const selectExistingAuthSecret = (targetFileValue, environmentValue) => {
 const isLocalSandboxDatabaseUrl = (value, expectedPort = "5432") => {
   try {
     const url = new URL(value);
-    const loopbackHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
+    const loopbackHosts = new Set(["localhost", "127.0.0.1"]);
     const port = url.port || "5432";
 
     return (
@@ -75,10 +89,19 @@ const isLocalSandboxDatabaseUrl = (value, expectedPort = "5432") => {
   }
 };
 
-const buildFixtureEnvironment = (environment = process.env) => ({
-  ...environment,
-  PAGESCMS_FIXTURES_ENABLED: "true",
-});
+const buildFixtureEnvironment = (environment = process.env) => {
+  const fixtureEnvironment = { ...environment };
+  for (const key of new Set([
+    ...fixtureIsolatedEnvironmentKeys,
+    ...Object.keys(environment).filter(isSandboxOnlyEnvironmentKey),
+  ])) {
+    fixtureEnvironment[key] = "";
+  }
+  fixtureEnvironment.PAGESCMS_FIXTURES_ENABLED = "true";
+  return fixtureEnvironment;
+};
+
+const buildSandboxEnvFiles = (path, contents) => [{ path, contents }];
 
 const getPackageManagerInvocation = (
   environment = process.env,
@@ -93,6 +116,7 @@ const getPackageManagerInvocation = (
 
 export {
   buildFixtureEnvironment,
+  buildSandboxEnvFiles,
   getPackageManagerInvocation,
   getInheritedSandboxKeys,
   isLocalSandboxDatabaseUrl,
