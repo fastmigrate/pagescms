@@ -322,6 +322,10 @@ const DuplicateOperationSchema = z.union([
           message: "'operations.duplicate.field' must be a string.",
         }).regex(/^[a-zA-Z0-9-_]+(?:\.[a-zA-Z0-9-_]+)*$/, {
           message: "'operations.duplicate.field' must be a valid field path.",
+        }).refine((value) => !value.split(".").some((part) => (
+          ["__proto__", "prototype", "constructor"].includes(part)
+        )), {
+          message: "'operations.duplicate.field' contains an unsafe path segment.",
         }).optional(),
         fieldLabel: z.string({
           message: "'operations.duplicate.fieldLabel' must be a string.",
@@ -929,6 +933,23 @@ const ConfigSchema = z
         }
         return field;
       };
+      const findFieldPath = (
+        fields: any[] | undefined,
+        matcher: (field: any) => boolean,
+        prefix?: string,
+      ): string | undefined => {
+        for (const candidate of fields ?? []) {
+          const field = resolveSortComponent(candidate);
+          if (!field) continue;
+          const fieldPath = prefix ? `${prefix}.${field.name}` : field.name;
+          if (matcher(field)) return fieldPath;
+          if (field.type === "object" && !field.list) {
+            const nested = findFieldPath(field.fields, matcher, fieldPath);
+            if (nested) return nested;
+          }
+        }
+        return undefined;
+      };
       presets.forEach((preset: any, index: number) => {
         const presetPath = [...path, 'view', 'sortPresets', index];
         if (item.type !== 'collection') ctx.addIssue({ code: 'custom', message: 'Sort presets require a collection.', path: presetPath });
@@ -970,7 +991,7 @@ const ConfigSchema = z
             path: duplicatePath,
           });
         }
-        if (item.list === true) {
+        if (item.list) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: "Entry duplication isn't supported for root-list collections.",
@@ -981,7 +1002,20 @@ const ConfigSchema = z
         const configuredField = typeof duplicate === "object" ? duplicate.field : undefined;
         const duplicateField = configuredField
           ?? item.view?.primary
-          ?? (findField("title") ? "title" : undefined);
+          ?? findFieldPath(item.fields, (field) => field.name === "title")
+          ?? findFieldPath(
+            item.fields,
+            (field) => !["object", "block"].includes(String(field.type)),
+          );
+        if (duplicateField?.split(".").some((part: string) => (
+          ["__proto__", "prototype", "constructor"].includes(part)
+        ))) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Entry duplication field contains an unsafe path segment.",
+            path: [...duplicatePath, "field"],
+          });
+        }
         const field = duplicateField ? findField(duplicateField) : undefined;
         if (!field || !["string", "text"].includes(field.type)) {
           ctx.addIssue({

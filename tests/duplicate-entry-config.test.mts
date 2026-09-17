@@ -56,6 +56,12 @@ test("accepts opt-in entry duplication with localized labels", () => {
   assert.equal(result.success, true, JSON.stringify(result.error?.issues));
   assert.equal(ConfigSchema.safeParse({ content: [collection(true)] }).success, true);
   assert.equal(ConfigSchema.safeParse({ content: [collection(false)] }).success, true);
+  assert.equal(ConfigSchema.safeParse({
+    content: [collection(true, {
+      view: {},
+      fields: [{ name: "name", type: "string" }],
+    })],
+  }).success, true);
 });
 
 test("rejects unsafe or unsupported duplicate configurations", () => {
@@ -68,7 +74,13 @@ test("rejects unsafe or unsupported duplicate configurations", () => {
       fields: [{ name: "title", type: "string" }],
     }),
     collection(true, { list: true }),
+    collection(true, { list: { collapsible: true } }),
     collection({ field: "title", unknown: true }),
+    collection({ field: "__proto__.polluted" }),
+    collection(true, {
+      view: { primary: "constructor" },
+      fields: [{ name: "constructor", type: "string" }],
+    }),
   ];
 
   for (const value of cases) {

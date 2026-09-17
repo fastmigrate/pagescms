@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildDuplicateContent,
+  mergeDuplicateContent,
   resolveDuplicateOperation,
 } from "../lib/duplicate-entry.ts";
 import { resolveContentOperations } from "../lib/operations.ts";
@@ -30,6 +31,68 @@ test("duplicates saved content without mutating the source", () => {
   });
   assert.equal(source.draft, false);
   assert.equal(source.metadata.heading, "Old heading");
+});
+
+test("preserves unmodeled source fields while replacing modeled values", () => {
+  const merged = mergeDuplicateContent(
+    {
+      title: "Stored title",
+      future: { retained: true, list: ["stored"] },
+    },
+    {
+      title: "New title",
+      future: { list: ["updated"] },
+    },
+  );
+
+  assert.deepEqual(merged, {
+    title: "New title",
+    future: { retained: true, list: ["updated"] },
+  });
+});
+
+test("regenerates UUID identities throughout duplicated content", () => {
+  const source = {
+    id: "11111111-1111-4111-8111-111111111111",
+    title: "Original",
+    items: [{ id: "22222222-2222-4222-8222-222222222222" }],
+  };
+  const duplicate = buildDuplicateContent({
+    source,
+    field: "title",
+    value: "Copy",
+    draft: false,
+    fields: [
+      { name: "id", type: "uuid" },
+      { name: "title", type: "string" },
+      {
+        name: "items",
+        type: "object",
+        list: true,
+        fields: [{ name: "id", type: "uuid" }],
+      },
+    ],
+  });
+
+  assert.match(String(duplicate.id), /^[0-9a-f-]{36}$/u);
+  assert.notEqual(duplicate.id, source.id);
+  const items = duplicate.items as Array<Record<string, unknown>>;
+  assert.match(String(items[0].id), /^[0-9a-f-]{36}$/u);
+  assert.notEqual(items[0].id, source.items[0].id);
+});
+
+test("rejects prototype-related keys without modifying global objects", () => {
+  const before = ({} as Record<string, unknown>).polluted;
+  assert.throws(
+    () => buildDuplicateContent({
+      source: { title: "Original" },
+      field: "__proto__.polluted",
+      value: "yes",
+      draft: false,
+    }),
+    /Unsafe content key/u,
+  );
+  assert.equal(({} as Record<string, unknown>).polluted, before);
 });
 
 test("resolves localized duplicate UI options and safe defaults", () => {

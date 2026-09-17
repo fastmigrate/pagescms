@@ -136,5 +136,7 @@ filename with the collection's normal filename template, and POSTs it to the
 existing file-save API with conflict renaming disabled. Normal create
 permissions, schema validation, serialization, commit identity/message, cache
 updates, and GitHub branch rules therefore remain authoritative. Unsaved form
-changes are never copied. Root-list collections and non-text duplicate fields
-are rejected by configuration validation.
+changes are never copied. Unmodeled stored keys are preserved, while
+schema-defined UUID identities are regenerated for the new entry. Root-list
+collections, non-text duplicate fields, and prototype-related field paths are
+rejected by configuration validation and guarded again at runtime.

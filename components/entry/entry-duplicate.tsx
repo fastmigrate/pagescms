@@ -6,9 +6,8 @@ import { Copy } from "lucide-react";
 import { toast } from "sonner";
 import { useSWRConfig } from "swr";
 import { requireApiSuccess } from "@/lib/api-client";
-import { buildDuplicateContent, resolveDuplicateOperation } from "@/lib/duplicate-entry";
-import { generateFilename, getFieldByPath, getPrimaryField } from "@/lib/schema";
-import { getParentPath, joinPathSegments, normalizePath } from "@/lib/utils/file";
+import { resolveDuplicateOperation } from "@/lib/duplicate-entry";
+import { getFieldByPath, getPrimaryField } from "@/lib/schema";
 import type { ApiSuccess, EntryData } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import {
@@ -59,7 +58,6 @@ export function EntryDuplicate({
   if (!operation || !field) return null;
 
   const encodedBranch = encodeURIComponent(branch);
-  const sourceUrl = `/api/${owner}/${repo}/${encodedBranch}/entries/${encodeURIComponent(path)}?name=${encodeURIComponent(name)}`;
   const fieldLabel = operation.fieldLabel || `New ${field.label || field.name}`;
   const trimmedValue = value.trim();
 
@@ -75,38 +73,15 @@ export function EntryDuplicate({
 
     setIsDuplicating(true);
     const duplicatePromise = (async (): Promise<ApiSuccess<EntryData>> => {
-      const sourceResponse = await fetch(sourceUrl, { cache: "no-store" });
-      const source = await requireApiSuccess<ApiSuccess<EntryData>>(
-        sourceResponse,
-        "Failed to load the latest saved entry",
-      );
-      if (!source.data.contentObject) {
-        throw new Error("The saved entry has no structured content to duplicate.");
-      }
-
-      const content = buildDuplicateContent({
-        source: source.data.contentObject,
-        field: operation.field,
-        value: trimmedValue,
-        draft: operation.draft,
-      });
-      const filename = generateFilename(schema.filename, schema, content);
-      if (!filename) throw new Error("The new value doesn't produce a valid filename.");
-
-      const destinationPath = joinPathSegments([getParentPath(path), filename]);
-      if (normalizePath(destinationPath) === normalizePath(path)) {
-        throw new Error("The duplicate must use a different filename.");
-      }
-
       const response = await fetch(
-        `/api/${owner}/${repo}/${encodedBranch}/files/${encodeURIComponent(destinationPath)}`,
+        `/api/${owner}/${repo}/${encodedBranch}/files/${encodeURIComponent(path)}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             type: "content",
             name,
-            content,
+            duplicate: { value: trimmedValue },
             onConflict: "error",
           }),
         },
