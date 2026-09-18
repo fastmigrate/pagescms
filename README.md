@@ -65,6 +65,11 @@ For real authentication, GitHub API, branch, conflict, and commit behavior:
 npm run setup:github-app -- --base-url http://localhost:3000 --env .env.local
 ```
 
+The helper disables webhook delivery for loopback URLs because GitHub cannot
+reach them. That is sufficient for authentication and normal CMS reads and
+writes. To test webhook-driven cache invalidation as well, expose the local CMS
+through a public tunnel and pass that HTTPS URL as `--base-url` instead.
+
 3. Start PostgreSQL, apply migrations, and run the local app:
 
 ```bash
@@ -82,7 +87,7 @@ The sandbox path is intended for checks that fixtures cannot represent:
 - GitHub App installation and user authentication,
 - repository and branch discovery,
 - create/update conflicts and commit metadata,
-- webhook-driven cache behavior.
+- webhook-driven cache behavior when the App uses a public tunnel URL.
 
 ## Local development
 
