@@ -154,7 +154,9 @@ external writes. Fixture routes return 404 in production builds even if their
 flag is present. `npm run dev:local` starts PostgreSQL, applies migrations, and
 runs the complete authenticated application against credentials from an
 untracked `.env.local`; those credentials must belong to a dedicated sandbox
-GitHub App and repository.
+GitHub App and repository. The setup helper leaves webhooks disabled when the
+CMS base URL is a local loopback address because GitHub cannot deliver to it;
+use a public tunnel URL only when webhook delivery itself needs testing.
 
 The production behavior remains unchanged when no boundary is injected. The
 platform-side candidate command accepts only an immutable 40-character commit
