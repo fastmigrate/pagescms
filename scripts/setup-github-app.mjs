@@ -8,6 +8,10 @@ import {
   selectExistingAuthSecret,
   selectExistingCryptoKey,
 } from "./dev-environment.mjs";
+import {
+  buildGitHubAppManifest,
+  isLoopbackBaseUrl,
+} from "./github-app-manifest.mjs";
 
 const args = parseArgs(process.argv.slice(2));
 
@@ -40,44 +44,12 @@ async function main() {
   const webhookUrl = `${baseUrl}/api/webhook/github`;
   const setupUrl = `${baseUrl}/`;
 
-  const manifest = {
-    name: appName,
-    url: baseUrl,
-    callback_urls: [userAuthorizationCallbackUrl],
-    redirect_url: localCallbackUrl,
-    description:
-      "Pages CMS is an open source CMS for editing content in GitHub repositories.",
-    public: false,
-    default_permissions: {
-      administration: "write",
-      actions: "write",
-      checks: "read",
-      statuses: "read",
-      contents: "write",
-      // API key is "emails" (the UI label "Email addresses" is not the manifest key)
-      emails: "read",
-      metadata: "read",
-    },
-    default_events: [
-      "installation_target",
-      "repository",
-      "push",
-      "delete",
-      "check_run",
-      "check_suite",
-      "status",
-      "workflow_run",
-    ],
-    request_oauth_on_install: false,
-    setup_on_update: true,
-    setup_url: setupUrl,
-    hook_attributes: {
-      url: webhookUrl,
-      active: true,
-      // GitHub's manifest validation rejects a "secret" key here; the
-      // conversion response returns a GitHub-generated webhook_secret instead.
-    },
-  };
+  const webhookEnabled = !isLoopbackBaseUrl(baseUrl);
+  const manifest = buildGitHubAppManifest({
+    appName,
+    baseUrl,
+    localCallbackUrl,
+  });
 
   const appCreationUrl =
     ownerType === "org"
@@ -140,10 +112,16 @@ async function main() {
   }
   console.log(`- User authorization callback: ${userAuthorizationCallbackUrl}`);
   console.log(`- Setup URL: ${setupUrl}`);
-  console.log(`- Webhook URL: ${webhookUrl}`);
+  console.log(
+    webhookEnabled
+      ? `- Webhook URL: ${webhookUrl}`
+      : "- Webhook: disabled for local loopback URL",
+  );
   console.log("\nNext:");
   console.log("1) Install the app on your target account/repositories.");
-  console.log("   Disable 'User-to-server token expiration' if GitHub shows that option.");
+  console.log(
+    "   Disable 'User-to-server token expiration' if GitHub shows that option.",
+  );
   console.log("2) Start Pages CMS.");
 }
 
@@ -198,7 +176,9 @@ async function runLocalFlow({
       if (incomingState !== state) {
         res.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
         res.end("Invalid state. Return to terminal.");
-        rejectCode(new Error("OAuth state mismatch while creating GitHub App."));
+        rejectCode(
+          new Error("OAuth state mismatch while creating GitHub App."),
+        );
         return;
       }
 
@@ -225,7 +205,9 @@ async function runLocalFlow({
   });
 
   const launchUrl = `http://${host}:${port}${startPath}`;
-  console.log(`\nOpen this URL if browser does not open automatically:\n${launchUrl}`);
+  console.log(
+    `\nOpen this URL if browser does not open automatically:\n${launchUrl}`,
+  );
   if (autoOpen) tryOpenBrowser(launchUrl);
 
   const timeoutMs = 10 * 60 * 1000;
