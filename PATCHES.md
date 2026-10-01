@@ -189,3 +189,12 @@ continue using the existing authorized thumbnail path.
 Development fixture: `/dev/fixtures/media-ai` with the production dialog and
 an injected save boundary. The extension stays opt-in and must not be enabled
 in customer configuration until this candidate is reviewed and deployed.
+||||||| parent of d1bbfe8 (fix(deps): patch Next.js and Nodemailer production advisories)
+
+## Dependency security refresh — 2026-10-02
+
+FM-002 refreshes Next.js/@next/env/eslint-config-next to 16.3.8 and Nodemailer
+to 10.0.13. Production audit has zero high or critical findings with the same
+CI threshold. The four existing moderate Drizzle Kit advisories remain.
+The production build, existing tests, TypeScript, and a delivery-free
+Nodemailer stream transport smoke validate the dependency boundary.
