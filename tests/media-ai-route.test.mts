@@ -7,8 +7,8 @@ import * as limits from '../lib/upload-limits.ts';
 import * as metadata from '../lib/media-metadata.ts';
 const require=createRequire(import.meta.url);
 function load(file: string, mocks: Record<string, any>) {
- const module={exports:{} as any};const compiled=ts.transpileModule(readFileSync(new URL(`../${file}`,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;
- new Function('require','module','exports',compiled)((id: string)=>id in mocks ? mocks[id] : require(id),module,module.exports);return module.exports;
+ const loadedModule={exports:{} as any};const compiled=ts.transpileModule(readFileSync(new URL(`../${file}`,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;
+ new Function('require','module','exports',compiled)((id: string)=>id in mocks ? mocks[id] : require(id),loadedModule,loadedModule.exports);return loadedModule.exports;
 }
 function routeFixture({signedIn=true,allowed=true}={}) {
  let writes=0;

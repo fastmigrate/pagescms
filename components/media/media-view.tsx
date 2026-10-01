@@ -1,4 +1,5 @@
 "use client";
+import dynamic from "next/dynamic";
 
 import { Fragment, memo, type ReactNode, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -128,6 +129,8 @@ type MediaFileTileProps = {
   onRename: (path: string, newPath: string) => void;
 };
 
+const AiSourceDialog = dynamic(() => import("./media-dialog").then(module => module.MediaDialog));
+
 const MediaFileTile = memo(function MediaFileTile({
   item,
   mediaName,
@@ -181,7 +184,7 @@ const MediaFileTile = memo(function MediaFileTile({
           </Button>
         </FileOptions>
       </div>
-      {aiOpen && <MediaAiDialog item={item} open={aiOpen} onOpenChange={setAiOpen} save={saveAi} onSaved={() => { void mutate(key => typeof key === 'string' && key.includes('/media/')); }} />}
+      {aiOpen && <MediaAiDialog sourcePicker={select => <AiSourceDialog media={mediaName} maxSelected={1} extensions={["jpg", "jpeg", "png", "webp", "avif"]} onSubmit={paths => { if (paths[0]) select(paths[0]); }}><Button type="button" variant="outline">Originalbild auswählen</Button></AiSourceDialog>} item={item} open={aiOpen} onOpenChange={setAiOpen} save={saveAi} onSaved={() => { void mutate(key => typeof key === 'string' && key.includes('/media/')); }} />}
       {selectable && isSelected && (
         <div className="text-primary-foreground bg-primary p-0.5 rounded-full absolute top-2 left-2">
           <Check className="stroke-[3] w-3 h-3"/>

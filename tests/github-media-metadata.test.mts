@@ -26,9 +26,9 @@ function fixture({ conflict = false, stale = false } = {}) {
     '@/lib/media-metadata': metadata,
   };
   const compiled = ts.transpileModule(readFileSync(new URL('../lib/github-media-metadata.ts', import.meta.url), 'utf8'), {compilerOptions: {module: ts.ModuleKind.CommonJS}}).outputText;
-  const module = {exports: {} as any}; new Function('require','module','exports',compiled)((key: string) => mocks[key], module, module.exports);
+  const loadedModule = {exports: {} as any}; new Function('require','module','exports',compiled)((key: string) => mocks[key], loadedModule, loadedModule.exports);
   const options = {owner:'fixture',repo:'private',branch:'main',token:'test',configObject:{mediaMetadata:'data/media.json',media:[{input:'media'}]}};
-  return {mutate: (operation: any) => module.exports.mutateMediaMetadata(options, operation), document, get written() {return written;}, get delta() {return delta;}, get updated() {return updated;}};
+  return {mutate: (operation: any) => loadedModule.exports.mutateMediaMetadata(options, operation), document, get written() {return written;}, get delta() {return delta;}, get updated() {return updated;}};
 }
 test('rename and metadata share one base-tree commit and preserve unknown fields', async () => {
   const f = fixture(); await f.mutate({action:'rename',path:'media/source.jpg',newPath:'media/new.jpg',sha:sourceSha});
@@ -50,4 +50,13 @@ test('stale source, stale metadata, destination collision and concurrent branch 
     {action:'rename',path:'media/source.jpg',newPath:'media/crop.webp',sha:sourceSha},
   ]) { const f=fixture(); await assert.rejects(f.mutate(operation)); assert.equal(f.updated,false); }
   const f=fixture({conflict:true}); await assert.rejects(f.mutate({action:'delete',path:'media/source.jpg',sha:sourceSha}), (error: any) => error.status===409); assert.equal(f.updated,false);
+});
+
+test('unclassified originals and changed byte-only fingerprints cannot be inherited', async () => {
+  const f=fixture();
+  await assert.rejects(f.mutate({action:'classify',path:'media/source.jpg',sha:sourceSha,revision:metadata.recordRevision(f.document.assets['media/source.jpg']),derivedFrom:'media/missing.jpg'}), (error: any) => error.status===400);
+  f.document.assets['media/source.jpg'].sourceGitSha=undefined as any;
+  f.document.assets['media/source.jpg'].sourceSha256=metadata.fingerprint('changed');
+  await assert.rejects(f.mutate({action:'classify',path:'media/crop.webp',sha:'b'.repeat(40),revision:metadata.recordRevision(f.document.assets['media/crop.webp']),derivedFrom:'media/source.jpg'}), (error: any) => error.status===409);
+  assert.equal(f.updated,false);
 });
