@@ -4,14 +4,14 @@ import ts from 'typescript';
 import {readFileSync} from 'node:fs';
 import * as metadata from '../lib/media-metadata.ts';
 const sourceSha = 'a'.repeat(40);
-function fixture({ conflict = false, large = false } = {}) {
+function fixture({ conflict = false, large = false, truncated = false } = {}) {
   const document = {version: 1, assets: {'media/source.jpg': {classification: 'generated', sourceSha256: metadata.fingerprint('image'), sourceGitSha: sourceSha, future: null}, 'media/crop.webp': {derivedFrom: 'media/source.jpg', sourceSha256: metadata.fingerprint('crop')}}, unknown: {nested: [null, '']}};
   let updated = false; let written: any; let delta: any;
   const entries = [{path: 'media/source.jpg', sha: sourceSha, type: 'blob', mode: '100644', size: 5}, {path: 'media/crop.webp', sha: 'b'.repeat(40), type: 'blob', mode: '100644'}, {path: 'data/media.json', sha: 'c'.repeat(40), type: 'blob', mode: '100644'}];
   const octokit = {rest: {repos: {getContent: async () => ({data:{type:"file",sha:"c".repeat(40),size:large ? 1_100_000 : 100,content:large ? "" : Buffer.from(JSON.stringify(document)).toString("base64")}})},git: {
     getRef: async () => ({data: {object: {sha: 'head'}}}),
     getCommit: async () => ({data: {tree: {sha: 'base'}}}),
-    getTree: async () => ({data: {tree: entries, truncated: false}}),
+    getTree: async () => ({data: {tree: entries, truncated}}),
     getBlob: async ({file_sha}: any) => ({data: {content: Buffer.from(file_sha === 'c'.repeat(40) ? JSON.stringify(document) : 'image').toString('base64')}}),
     createBlob: async ({content, encoding}: any) => { if (encoding === 'utf-8') written = JSON.parse(content); return {data: {sha: 'd'.repeat(40)}}; },
     createTree: async (value: any) => {delta = value; return {data: {sha: 'new-tree'}};},
@@ -28,7 +28,7 @@ function fixture({ conflict = false, large = false } = {}) {
   const compiled = ts.transpileModule(readFileSync(new URL('../lib/github-media-metadata.ts', import.meta.url), 'utf8'), {compilerOptions: {module: ts.ModuleKind.CommonJS}}).outputText;
   const loadedModule = {exports: {} as any}; new Function('require','module','exports',compiled)((key: string) => mocks[key], loadedModule, loadedModule.exports);
   const options = {owner:'fixture',repo:'private',branch:'main',token:'test',configObject:{mediaMetadata:'data/media.json',media:[{input:'media'}]}};
-  return {mutate: (operation: any) => loadedModule.exports.mutateMediaMetadata(options, operation), read: () => loadedModule.exports.readMediaMetadata("test", {owner:"fixture",repo:"private",branch:"main"}, "data/media.json"), document, get written() {return written;}, get delta() {return delta;}, get updated() {return updated;}};
+  return {mutate: (operation: any) => loadedModule.exports.mutateMediaMetadata(options, operation), read: () => loadedModule.exports.readMediaMetadata("test", {owner:"fixture",repo:"private",branch:"main"}, "data/media.json"), status: () => loadedModule.exports.readMediaMetadataStatus("test", {owner:"fixture",repo:"private",branch:"main"}, "data/media.json"), document, get written() {return written;}, get delta() {return delta;}, get updated() {return updated;}};
 }
 test('rename and metadata share one base-tree commit and preserve unknown fields', async () => {
   const f = fixture(); await f.mutate({action:'rename',path:'media/source.jpg',newPath:'media/new.jpg',sha:sourceSha});
@@ -81,4 +81,19 @@ test('renaming to an unsupported extension preserves descendant labels and remov
  assert.equal(f.written.assets['media/source.gif'],undefined);assert.equal(f.written.assets['media/source.jpg'],undefined);
  assert.equal(f.written.assets['media/crop.webp'].classification,'generated');assert.equal(f.written.assets['media/crop.webp'].derivedFrom,undefined);
  assert(f.delta.tree.some((entry:any)=>entry.path==='media/source.gif' && entry.sha===sourceSha));
+});
+
+test('listing trust refuses absent Git fingerprints and propagates replaced ancestor status', async () => {
+ const f=fixture();
+ f.document.assets['media/source.jpg'].sourceGitSha=sourceSha;
+ f.document.assets['media/crop.webp'].sourceGitSha='b'.repeat(40);
+ assert.equal((await f.status()).stale.get('media/crop.webp'),false);
+ delete f.document.assets['media/source.jpg'].sourceGitSha;
+ const unverifiable=await f.status();assert.equal(unverifiable.stale.get('media/source.jpg'),true);assert.equal(unverifiable.stale.get('media/crop.webp'),true);
+ f.document.assets['media/source.jpg'].sourceGitSha='e'.repeat(40);
+ assert.equal((await f.status()).stale.get('media/crop.webp'),true);
+});
+
+test('truncated Git listings cannot certify unchanged source provenance', async () => {
+ const f=fixture({truncated:true});assert.equal((await f.status()).stale.get('media/source.jpg'),true);
 });

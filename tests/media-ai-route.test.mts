@@ -33,3 +33,21 @@ test('actual AI route rejects origin, malformed JSON, sibling/traversal and abse
  assert.equal(f.writes,0);
 });
 test('actual AI route authorizes private repository and saves a valid request',async()=>{const f=routeFixture();assert.equal((await f.post(f.request(),f.context())).status,200);assert.equal(f.writes,1);});
+
+test('actual library route reports unverifiable and stale classifications without trusting cached file SHAs', async () => {
+ const assets:any={
+  'media/unverifiable.jpg':{classification:'generated',sourceSha256:'a'.repeat(64)},
+  'media/verified.jpg':{classification:'modified',sourceSha256:'b'.repeat(64),sourceGitSha:'c'.repeat(40)},
+  'media/cached.jpg':{classification:'generated',sourceSha256:'d'.repeat(64),sourceGitSha:'e'.repeat(40)},
+ };
+ const route=load('app/api/[owner]/[repo]/[branch]/media/[name]/[path]/route.ts',{
+  '@/lib/github-media-metadata':{readMediaMetadataStatus:async()=>({metadata:{version:1,assets},stale:new Map([['media/unverifiable.jpg',true],['media/verified.jpg',false],['media/cached.jpg',false]])})},
+  '@/lib/media-metadata':metadata,'@/lib/api-repo-context':{getRepoReadContext:async()=>({token:'test',config:{object:{mediaMetadata:'data/media.json',media:[{name:'images',input:'media'}]}}})},
+  '@/lib/utils/file':{normalizePath:(value:string)=>value,getFileExtension:()=> 'jpg'},
+  '@/lib/github-cache-file':{getMediaCache:async()=>['unverifiable','verified','cached','ordinary'].map(name=>({type:'file',name:`${name}.jpg`,path:`media/${name}.jpg`,sha:'c'.repeat(40)}))},
+  '@/lib/api-error':load('lib/api-error.ts',{}),
+ });
+ const response=await route.GET(new Request('https://cms.test/library'),{params:Promise.resolve({owner:'fixture',repo:'private',branch:'main',name:'images',path:'media'})});assert.equal(response.status,200);
+ const {data}=await response.json();const ai=(name:string)=>data.find((item:any)=>item.name===`${name}.jpg`).ai;
+ assert.equal(ai('unverifiable').stale,true);assert.equal(ai('verified').stale,false);assert.equal(ai('cached').stale,true);assert.equal(ai('ordinary').stale,false);assert.equal(ai('ordinary').classification,'unmarked');
+});

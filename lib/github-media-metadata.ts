@@ -27,6 +27,36 @@ export async function readMediaMetadata(token: string, ref: Ref, metadataPath: s
   }
 }
 
+// Bind listing trust, including ancestors in other folders, to one fresh Git snapshot.
+export async function readMediaMetadataStatus(token: string, ref: Ref, metadataPath: string) {
+  const octokit = createOctokitInstance(token);
+  const repository = {owner: ref.owner, repo: ref.repo};
+  const {data: head} = await octokit.rest.git.getRef({...repository, ref: `heads/${ref.branch}`});
+  const {data: commit} = await octokit.rest.git.getCommit({...repository, commit_sha: head.object.sha});
+  const [metadata, {data: tree}] = await Promise.all([
+    readMediaMetadata(token, {...ref, branch: head.object.sha}, metadataPath),
+    octokit.rest.git.getTree({...repository, tree_sha: commit.tree.sha, recursive: 'true'}),
+  ]);
+  // A truncated tree cannot prove that an omitted source is unchanged.
+  const sources = new Map(tree.tree.filter(entry => entry.type === 'blob' && entry.mode !== '120000').map(entry => [entry.path!, entry.sha]));
+  const stale = new Map<string, boolean>();
+  for (const start of Object.keys(metadata.assets)) {
+    if (stale.has(start)) continue;
+    const chain: string[] = [];
+    let current = start;
+    while (Object.hasOwn(metadata.assets, current) && !stale.has(current)) {
+      chain.push(current); current = metadata.assets[current].derivedFrom ?? '';
+    }
+    let untrusted = stale.get(current) ?? false;
+    for (const path of chain.reverse()) {
+      const record = metadata.assets[path];
+      untrusted ||= !!tree.truncated || !record.sourceGitSha || sources.get(path) !== record.sourceGitSha;
+      stale.set(path, untrusted);
+    }
+  }
+  return {metadata, stale};
+}
+
 export async function mutateMediaMetadata(options: Options, operation: Operation) {
   const { owner, repo, branch, token, configObject } = options;
   const metadataPath = configObject.mediaMetadata;

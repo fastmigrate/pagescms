@@ -23,7 +23,7 @@ export function MediaAiDialog({ item, open, onOpenChange, save, onSaved, sourceP
   return <Dialog open={open} onOpenChange={busy ? undefined : onOpenChange}><DialogContent>
     <form onSubmit={submit} className="space-y-5">
       <DialogHeader><DialogTitle>AI-Kennzeichnung</DialogTitle><DialogDescription>{item.name} — gilt für alle daraus erzeugten Größen und Formate.</DialogDescription></DialogHeader>
-      {item.ai?.stale && <p role="status" className="text-sm text-destructive">Das Bild wurde ersetzt. Bitte die Kennzeichnung für den aktuellen Stand erneut prüfen.</p>}
+      {item.ai?.stale && <p role="status" className="text-sm text-destructive">Die Kennzeichnung lässt sich für den aktuellen Bildstand nicht bestätigen. Bitte erneut prüfen.</p>}
       <fieldset disabled={busy} className="space-y-3"><legend className="sr-only">Bildherkunft</legend>
         {[['unmarked','Keine Kennzeichnung'],['generated','AI GENERATED — mit KI erzeugt'],['modified','AI MODIFIED — mit KI verändert'],['inherit','Variante eines anderen Bildes']].map(([value,label]) => <label key={value} className="flex items-center gap-3 text-sm"><input type="radio" name={id} value={value} checked={choice === value} onChange={() => setChoice(value)} />{label}</label>)}
         {choice === 'inherit' && <div className="space-y-2"><label htmlFor={`${id}-source`} className="text-sm">Originalbild</label><Input id={`${id}-source`} name="derivedFrom" value={source} onChange={e => setSource(e.target.value)} required readOnly={!!sourcePicker} placeholder="website/src/assets/media/original.jpg" />{sourcePicker?.(setSource)}<p className="text-xs text-muted-foreground">Übernimmt dessen Kennzeichnung. Das Original muss bereits eingeordnet sein.</p></div>}
