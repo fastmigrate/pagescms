@@ -85,7 +85,10 @@ export async function mutateMediaMetadata(options: Options, operation: Operation
     }
     if (operation.classification !== undefined && !["generated", "modified", "unmarked"].includes(operation.classification)) throw createHttpError("Invalid AI classification.", 400);
     const { data } = await octokit.rest.git.getBlob({ ...ref, file_sha: source!.sha! });
-    doc.assets[savedPath] = { ...doc.assets[savedPath], sourceSha256: fingerprint(Buffer.from(data.content, "base64")), sourceGitSha: source!.sha!, classification: operation.classification, derivedFrom: operation.derivedFrom || undefined };
+    const previousRecord = doc.assets[savedPath];
+    const currentFingerprint = fingerprint(Buffer.from(data.content, "base64"));
+    if (previousRecord && previousRecord.sourceSha256 !== currentFingerprint) deleteRecord(doc, savedPath);
+    doc.assets[savedPath] = { ...previousRecord, sourceSha256: currentFingerprint, sourceGitSha: source!.sha!, classification: operation.classification, derivedFrom: operation.derivedFrom || undefined };
   } else if (operation.action === "save") {
     if (operation.sha && recordRevision(doc.assets[savedPath]) !== operation.revision) throw createHttpError("AI classification has changed. Refresh and retry before replacing the image.", 409);
     if (!operation.sha && (source || Object.hasOwn(doc.assets, savedPath))) {
@@ -110,7 +113,8 @@ export async function mutateMediaMetadata(options: Options, operation: Operation
   } else if (operation.action === "rename") {
     assertRepositoryPath(operation.newPath);
     if (entries.has(operation.newPath) || operation.newPath === metadataPath) throw createHttpError("Destination already exists.", 409);
-    renameRecords(doc, operation.path, operation.newPath);
+    if (isLabelable(operation.newPath)) renameRecords(doc, operation.path, operation.newPath);
+    else deleteRecord(doc, operation.path);
     changes.push({ path: operation.path, mode: "100644", type: "blob", sha: null }, { path: operation.newPath, mode: "100644", type: "blob", sha: source!.sha! });
     savedPath = operation.newPath;
   } else {

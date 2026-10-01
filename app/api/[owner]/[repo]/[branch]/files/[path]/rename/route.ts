@@ -52,6 +52,7 @@ export async function POST(
 
     const normalizedPath = normalizePath(params.path);
     const normalizedNewPath = normalizePath(data.newPath);
+    if ([normalizedPath, normalizedNewPath].includes(config.object.mediaMetadata)) throw createHttpError("The media metadata document is reserved for AI media operations.", 400);
     if (normalizedPath === normalizedNewPath) throw new Error(`New path "${data.newPath}" is the same as the old path.`);
 
     let schema;

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { deleteRecord, effectiveClassification, fingerprint, parseMediaMetadata, recordRevision, renameRecords, assertRepositoryPath, withinMedia } from '../lib/media-metadata.ts';
+import { deleteRecord, effectiveClassification, resolveClassifications, fingerprint, parseMediaMetadata, recordRevision, renameRecords, assertRepositoryPath, withinMedia } from '../lib/media-metadata.ts';
 const record = (classification?: 'generated' | 'modified' | 'unmarked', derivedFrom?: string) => ({sourceSha256: 'a'.repeat(64), classification, derivedFrom});
 const document = () => ({version: 1 as const, assets: {'media/source.jpg': {...record('generated'), privateNote: null}, 'media/crop.webp': record(undefined, 'media/source.jpg'), 'media/small.png': record(undefined, 'media/crop.webp')}, future: {version: 2}});
 test('derivatives inherit and explicit unmarked overrides without deleting unknown keys', () => {
@@ -36,4 +36,12 @@ test('missing, cyclic, invalid and unsupported inputs are rejected', () => {
 test('record revisions distinguish source and classification changes', () => {
   assert.notEqual(recordRevision(record('generated')), recordRevision(record('modified')));
   assert.equal(fingerprint(Buffer.from('abc')), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+});
+test('long derivation chains validate with linear visits and no recursive stack', () => {
+ const assets: Record<string, ReturnType<typeof record>>={};
+ for(let index=9999;index>=0;index--) assets[`media/${index}.jpg`]=record(index===0?'generated':undefined,index ? `media/${index-1}.jpg`:undefined);
+ let visits=0;const observed=new Proxy(assets,{get(target,key,receiver){if(typeof key==='string' && key.startsWith('media/'))visits++;return Reflect.get(target,key,receiver);}});
+ const doc=parseMediaMetadata({version:1,assets:observed});assert(visits<40_000,`Validation made ${visits} visits`);
+ assert.equal(resolveClassifications(doc).get('media/9999.jpg'),'generated');
+ assert(Buffer.byteLength(JSON.stringify(doc))<2_000_000);
 });

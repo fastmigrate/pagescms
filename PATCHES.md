@@ -189,7 +189,6 @@ continue using the existing authorized thumbnail path.
 Development fixture: `/dev/fixtures/media-ai` with the production dialog and
 an injected save boundary. The extension stays opt-in and must not be enabled
 in customer configuration until this candidate is reviewed and deployed.
-||||||| parent of d1bbfe8 (fix(deps): patch Next.js and Nodemailer production advisories)
 
 ## Dependency security refresh — 2026-10-02
 

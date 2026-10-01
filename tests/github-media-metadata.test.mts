@@ -70,3 +70,15 @@ test('collision allocation reserves orphan metadata paths', async () => {
  const result=await f.mutate({action:'save',path:'media/source.jpg',content:Buffer.from('new').toString('base64')});assert.equal(result.path,'media/source-2.jpg');assert.equal(f.written.assets[result.path].future,undefined);
 });
 test('large metadata reads use Git blobs when Contents omits inline bytes',async()=>{const f=fixture({large:true});assert.deepEqual(await f.read(),f.document);});
+test('reviewing externally replaced bytes detaches old derivatives before reclassification', async () => {
+ const f=fixture();f.document.assets['media/source.jpg'].sourceSha256=metadata.fingerprint('old bytes');
+ await f.mutate({action:'classify',path:'media/source.jpg',sha:sourceSha,revision:metadata.recordRevision(f.document.assets['media/source.jpg']),classification:'modified'});
+ assert.equal(f.written.assets['media/source.jpg'].classification,'modified');
+ assert.equal(f.written.assets['media/crop.webp'].classification,'generated');assert.equal(f.written.assets['media/crop.webp'].derivedFrom,undefined);
+});
+test('renaming to an unsupported extension preserves descendant labels and removes its record', async () => {
+ const f=fixture();await f.mutate({action:'rename',path:'media/source.jpg',newPath:'media/source.gif',sha:sourceSha});
+ assert.equal(f.written.assets['media/source.gif'],undefined);assert.equal(f.written.assets['media/source.jpg'],undefined);
+ assert.equal(f.written.assets['media/crop.webp'].classification,'generated');assert.equal(f.written.assets['media/crop.webp'].derivedFrom,undefined);
+ assert(f.delta.tree.some((entry:any)=>entry.path==='media/source.gif' && entry.sha===sourceSha));
+});

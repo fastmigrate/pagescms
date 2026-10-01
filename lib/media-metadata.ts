@@ -38,8 +38,28 @@ export function parseMediaMetadata(value: unknown): MediaMetadata {
     if (record.classification === undefined && !record.derivedFrom) throw new Error(`Missing classification: ${path}`);
     if (!isLabelable(path)) throw new Error(`AI labels support static JPEG, PNG, WebP and AVIF only: ${path}`);
   }
-  for (const path of Object.keys(doc.assets)) effectiveClassification(doc, path);
+  resolveClassifications(doc);
   return doc;
+}
+export function resolveClassifications(doc: MediaMetadata): Map<string, Classification> {
+  const resolved = new Map<string, Classification>();
+  for (const start of Object.keys(doc.assets)) {
+    if (resolved.has(start)) continue;
+    const chain: string[] = [];
+    const visiting = new Set<string>();
+    let current = start;
+    while (Object.hasOwn(doc.assets, current) && !resolved.has(current)) {
+      if (visiting.has(current)) throw new Error("Cyclic media derivation.");
+      visiting.add(current); chain.push(current);
+      current = doc.assets[current].derivedFrom ?? "";
+    }
+    let origin: Classification = resolved.get(current) ?? "unmarked";
+    for (const path of chain.reverse()) {
+      origin = doc.assets[path].classification ?? origin;
+      resolved.set(path, origin);
+    }
+  }
+  return resolved;
 }
 export function effectiveClassification(doc: MediaMetadata, path: string): Classification {
   const seen = new Set<string>();
@@ -66,10 +86,11 @@ export function renameRecords(doc: MediaMetadata, from: string, to: string) {
   for (const record of Object.values(doc.assets)) if (record.derivedFrom === from) record.derivedFrom = to;
 }
 export function deleteRecord(doc: MediaMetadata, path: string) {
+  const resolved = resolveClassifications(doc);
   // Preserve each direct descendant's effective label before unlinking it.
   for (const [child, record] of Object.entries(doc.assets)) {
     if (record.derivedFrom === path) {
-      record.classification ??= effectiveClassification(doc, child);
+      record.classification ??= resolved.get(child) ?? "unmarked";
       delete record.derivedFrom;
     }
   }

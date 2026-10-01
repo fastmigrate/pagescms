@@ -49,6 +49,8 @@ export async function POST(
     });
     if (!config && normalizedPath !== ".pages.yml") throw new Error(`Configuration not found for ${params.owner}/${params.repo}/${params.branch}.`);
 
+    if (config?.object.mediaMetadata === normalizedPath) throw createHttpError("The media metadata document is reserved for AI media operations.", 400);
+
     const data: any = await readFileRequest(request);
     const onConflict = data.duplicate != null || data.onConflict === "error"
       ? "error"
@@ -303,6 +305,8 @@ export async function POST(
       default:
         throw new Error(`Invalid type "${data.type}".`);
     }
+
+    if (config?.object.mediaMetadata === normalizedPath) throw createHttpError("The media metadata document is reserved for AI media operations.", 400);
 
     const commitIdentity = resolveCommitIdentity({
       configObject: config?.object,
@@ -592,6 +596,7 @@ export async function DELETE(
     if (!config) throw new Error(`Configuration not found for ${params.owner}/${params.repo}/${params.branch}.`);
 
     const normalizedPath = normalizePath(params.path);
+    if (config?.object.mediaMetadata === normalizedPath) throw createHttpError("The media metadata document is reserved for AI media operations.", 400);
     let schema;
     let schemaCommitTemplates: Record<string, string> | undefined;
     let schemaCommitIdentity: "app" | "user" | undefined;

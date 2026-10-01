@@ -94,6 +94,44 @@ test('actual file API rejects excess media and malformed bodies before any GitHu
   assert.equal(writes, 0);
 });
 
+test('generic content/media writes cannot overwrite, delete or rename the reserved manifest', async () => {
+  const mocks: Record<string, any> = {
+    '@/lib/upload-limits': await import('../lib/upload-limits.ts'),
+    '@/lib/media-metadata': await import('../lib/media-metadata.ts'),
+    '@/lib/session-server': {requireApiUserSession: async () => ({user: {id: 'test'}})},
+    '@/lib/token': {getToken: async () => ({token: 'test'})},
+    '@/lib/config-store': {getConfig: async () => ({object: {mediaMetadata: 'data/media.json'}})},
+    '@/lib/operations': {isContentOperationAllowed: () => true},
+    '@/lib/utils/file': {normalizePath: (p: string) => p},
+    '@/lib/schema': {getSchemaByName: () => {throw new Error('Reserved paths must be rejected before schema access');}},
+    '@/lib/utils/octokit': {createOctokitInstance: () => {throw new Error('Reserved paths must not reach GitHub');}},
+    '@/lib/api-error': {
+      createHttpError: (message: string, status: number) => Object.assign(new Error(message), {status}),
+      toErrorResponse: (e: any) => Response.json({message: e.message}, {status: e.status ?? 500}),
+    },
+  };
+  const load = (suffix: string) => {
+    const source = readFileSync(new URL(`../app/api/[owner]/[repo]/[branch]/files/[path]/${suffix}route.ts`, import.meta.url), 'utf8');
+    const compiled = ts.transpileModule(source, {compilerOptions: {module: ts.ModuleKind.CommonJS, esModuleInterop: true}}).outputText;
+    const route = {exports: {} as any};
+    new Function('require', 'module', 'exports', compiled)((id: string) => mocks[id] ?? {}, route, route.exports);
+    return route.exports;
+  };
+  const file = load(''); const rename = load('rename/');
+  const context = (path: string) => ({params: Promise.resolve({owner: 'o', repo: 'r', branch: 'main', path})});
+  const request = (method: string, body?: any) => {
+    const url = new URL('https://cms.test/api/o/r/main/files/data%2Fmedia.json?type=content&name=entries&sha=abc');
+    const req = new Request(url, {method, headers: {host: 'cms.test', origin: 'https://cms.test'}, ...(body ? {body: JSON.stringify(body)} : {})});
+    Object.defineProperty(req, 'nextUrl', {value: url}); return req;
+  };
+  for (const type of ['content', 'media']) {
+    assert.equal((await file.POST(request('POST', {type, name: 'entries', content: '{}'}), context('data/media.json'))).status, 400);
+    assert.equal((await file.DELETE(request('DELETE'), context('data/media.json'))).status, 400);
+    assert.equal((await rename.POST(request('POST', {type, name: 'entries', newPath: 'data/other.json'}), context('data/media.json'))).status, 400);
+    assert.equal((await rename.POST(request('POST', {type, name: 'entries', newPath: 'data/media.json'}), context('data/other.json'))).status, 400);
+  }
+});
+
 test('rich-text paste/drop/slash upload failures expose the size explanation through a toast', async () => {
   // Execute the actual handler with the editor and notification surfaces replaced.
   const source = ts.createSourceFile('editor.tsx', readFileSync(new URL('../components/ui/editor/index.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);

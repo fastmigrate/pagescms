@@ -1,5 +1,5 @@
 import { readMediaMetadata } from "@/lib/github-media-metadata";
-import { effectiveClassification, recordRevision, withinMedia } from "@/lib/media-metadata";
+import { resolveClassifications, recordRevision, withinMedia } from "@/lib/media-metadata";
 import { getRepoReadContext } from "@/lib/api-repo-context";
 import { getFileExtension, normalizePath } from "@/lib/utils/file";
 import { getMediaCache } from "@/lib/github-cache-file";
@@ -67,11 +67,12 @@ export async function GET(
     });
 
     const metadata = config.object.mediaMetadata ? await readMediaMetadata(token, params, config.object.mediaMetadata) : undefined;
+    const classifications = metadata ? resolveClassifications(metadata) : undefined;
     return Response.json({
       status: "success",
       data: results.map((item: any) => {
         return {
-          ai: metadata && item.type === "file" ? { classification: effectiveClassification(metadata, item.path), record: metadata.assets[item.path], revision: recordRevision(metadata.assets[item.path]), stale: !!metadata.assets[item.path]?.sourceGitSha && metadata.assets[item.path].sourceGitSha !== item.sha } : undefined,
+          ai: metadata && item.type === "file" ? { classification: classifications?.get(item.path) ?? "unmarked", record: metadata.assets[item.path], revision: recordRevision(metadata.assets[item.path]), stale: !!metadata.assets[item.path]?.sourceGitSha && metadata.assets[item.path].sourceGitSha !== item.sha } : undefined,
           type: item.type,
           sha: item.sha,
           name: item.name,
