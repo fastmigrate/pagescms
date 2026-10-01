@@ -8,7 +8,7 @@ type Ref = { owner: string; repo: string; branch: string };
 type Options = Ref & { token: string; configObject: Record<string, any>; committer?: { name: string; email: string }; templatesOverride?: Record<string, string>; contentName?: string; user?: string };
 type Operation =
   | { action: "classify"; path: string; sha: string; classification?: Classification; derivedFrom?: string; revision: string }
-  | { action: "save"; path: string; sha?: string; content: string; classification?: Classification; onConflict?: "error" | "rename" }
+  | { action: "save"; path: string; sha?: string; content: string; classification?: Classification; onConflict?: "error" | "rename"; revision?: string }
   | { action: "rename"; path: string; newPath: string; sha?: string }
   | { action: "delete"; path: string; sha: string };
 
@@ -19,7 +19,8 @@ export async function readMediaMetadata(token: string, ref: Ref, metadataPath: s
     const { data } = await octokit.rest.repos.getContent({ ...ref, ref: ref.branch, path: metadataPath });
     if ((data as any).size > 2_000_000) throw createHttpError("Media metadata exceeds 2 MB.", 413);
     if (Array.isArray(data) || data.type !== "file") throw new Error("Invalid media metadata file.");
-    return parseMediaMetadata(JSON.parse(Buffer.from(data.content, "base64").toString("utf8")));
+    const encoded = data.content || (await octokit.rest.git.getBlob({ owner: ref.owner, repo: ref.repo, file_sha: data.sha })).data.content;
+    return parseMediaMetadata(JSON.parse(Buffer.from(encoded, "base64").toString("utf8")));
   } catch (error: any) {
     if (error.status === 404) return { version: 1, assets: {} };
     throw error;
@@ -86,13 +87,14 @@ export async function mutateMediaMetadata(options: Options, operation: Operation
     const { data } = await octokit.rest.git.getBlob({ ...ref, file_sha: source!.sha! });
     doc.assets[savedPath] = { ...doc.assets[savedPath], sourceSha256: fingerprint(Buffer.from(data.content, "base64")), sourceGitSha: source!.sha!, classification: operation.classification, derivedFrom: operation.derivedFrom || undefined };
   } else if (operation.action === "save") {
-    if (!operation.sha && source) {
+    if (operation.sha && recordRevision(doc.assets[savedPath]) !== operation.revision) throw createHttpError("AI classification has changed. Refresh and retry before replacing the image.", 409);
+    if (!operation.sha && (source || Object.hasOwn(doc.assets, savedPath))) {
       if (operation.onConflict === "error") throw createHttpError("File already exists.", 409);
       const dot = savedPath.lastIndexOf(".");
       const stem = dot > savedPath.lastIndexOf("/") ? savedPath.slice(0, dot) : savedPath;
       const ext = dot > savedPath.lastIndexOf("/") ? savedPath.slice(dot) : "";
       let suffix = 1;
-      while (entries.has(`${stem}-${suffix}${ext}`)) suffix++;
+      while (entries.has(`${stem}-${suffix}${ext}`) || Object.hasOwn(doc.assets, `${stem}-${suffix}${ext}`)) suffix++;
       savedPath = `${stem}-${suffix}${ext}`;
     }
     const { data: blob } = await octokit.rest.git.createBlob({ ...ref, content: operation.content, encoding: "base64" });
@@ -102,7 +104,9 @@ export async function mutateMediaMetadata(options: Options, operation: Operation
     const classification = operation.classification ?? "unmarked";
     if (!["generated", "modified", "unmarked"].includes(classification)) throw createHttpError("Invalid AI classification.", 400);
     if (!isLabelable(savedPath) && classification !== "unmarked") throw createHttpError("AI labels support static JPEG, PNG, WebP and AVIF only.", 400);
-    if (isLabelable(savedPath)) doc.assets[savedPath] = { ...doc.assets[savedPath], sourceSha256: fingerprint(Buffer.from(operation.content, "base64")), sourceGitSha: savedSha, classification, derivedFrom: undefined };
+    const previousRecord = doc.assets[savedPath];
+    if (operation.sha) deleteRecord(doc, savedPath); // Existing crops belong to the old bytes.
+    if (isLabelable(savedPath)) doc.assets[savedPath] = { ...previousRecord, sourceSha256: fingerprint(Buffer.from(operation.content, "base64")), sourceGitSha: savedSha, classification, derivedFrom: undefined };
   } else if (operation.action === "rename") {
     assertRepositoryPath(operation.newPath);
     if (entries.has(operation.newPath) || operation.newPath === metadataPath) throw createHttpError("Destination already exists.", 409);

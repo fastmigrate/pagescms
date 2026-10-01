@@ -35,6 +35,7 @@ export type EntryData = {
 };
 
 export type FileSaveData = {
+  ai?: MediaItem["ai"];
   type?: string;
   sha?: string;
   name?: string;

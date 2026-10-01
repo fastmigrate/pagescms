@@ -115,7 +115,7 @@ export async function POST(
       : undefined;
     
     const atomic = data.type === "media" && config.object.mediaMetadata
-      ? await mutateMediaMetadata({ token, ...params, configObject: config.object, templatesOverride: schemaCommitTemplates, contentName: data.name, committer }, { action: "rename", path: normalizedPath, newPath: normalizedNewPath, sha: data.sha })
+      ? await mutateMediaMetadata({ token, ...params, configObject: config.object, templatesOverride: schemaCommitTemplates, contentName: data.name, user: user.email || user.name || String(user.id || ""), committer }, { action: "rename", path: normalizedPath, newPath: normalizedNewPath, sha: data.sha })
       : undefined;
     const response = atomic ? { sha: atomic.commitSha, path: normalizedPath, newPath: normalizedNewPath } : await githubRenameFile(
       token,

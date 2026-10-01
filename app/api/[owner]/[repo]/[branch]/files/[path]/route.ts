@@ -319,7 +319,7 @@ export async function POST(
       : undefined;
     
     const atomic = data.type === "media" && config?.object.mediaMetadata && getFileName(normalizedPath) !== ".gitkeep"
-      ? await mutateMediaMetadata({ token, ...params, configObject: config.object, templatesOverride: schemaCommitTemplates, contentName: data.name, user: user.email || user.name || String(user.id || ""), committer }, { action: "save", path: normalizedPath, content: contentBase64, sha: data.sha, classification: data.classification, onConflict })
+      ? await mutateMediaMetadata({ token, ...params, configObject: config.object, templatesOverride: schemaCommitTemplates, contentName: data.name, user: user.email || user.name || String(user.id || ""), committer }, { action: "save", path: normalizedPath, content: contentBase64, sha: data.sha, revision: data.revision, classification: data.classification, onConflict })
       : undefined;
     const response = atomic ? { data: { content: { type: "file", name: getFileName(atomic.path), path: atomic.path, sha: atomic.sha, size: atomic.size, download_url: undefined }, commit: { sha: atomic.commitSha, committer: undefined } } } : await githubSaveFile(
       token,
@@ -673,7 +673,7 @@ export async function DELETE(
       committer,
     };
     const atomic = type === "media" && config.object.mediaMetadata
-      ? await mutateMediaMetadata({ token, ...params, configObject: config.object, templatesOverride: schemaCommitTemplates, contentName: name || undefined, committer }, { action: "delete", path: normalizedPath, sha })
+      ? await mutateMediaMetadata({ token, ...params, configObject: config.object, templatesOverride: schemaCommitTemplates, contentName: name || undefined, user: user.email || user.name || String(user.id || ""), committer }, { action: "delete", path: normalizedPath, sha })
       : undefined;
     const response = atomic ? { data: { content: null, commit: { sha: atomic.commitSha, committer: undefined } } } : await octokit.rest.repos.deleteFile(deleteOptions);
 
