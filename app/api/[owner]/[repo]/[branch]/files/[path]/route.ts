@@ -1,3 +1,5 @@
+import { mutateMediaMetadata } from "@/lib/github-media-metadata";
+import { withinMedia } from "@/lib/media-metadata";
 import { assertFileWriteOrigin, assertMediaContent, readFileRequest } from "@/lib/upload-limits";
 import { type NextRequest } from "next/server";
 import { createOctokitInstance } from "@/lib/utils/octokit";
@@ -274,7 +276,7 @@ export async function POST(
         schemaCommitTemplates = schema?.commit?.templates;
         schemaCommitIdentity = schema?.commit?.identity;
 
-        if (!normalizedPath.startsWith(schema.input)) throw new Error(`Invalid path "${params.path}" for media "${data.name}".`);
+        if (!withinMedia(normalizedPath, schema.input)) throw new Error(`Invalid path "${params.path}" for media "${data.name}".`);
         
         if (getFileName(normalizedPath) === ".gitkeep") {
           // Folder creation
@@ -316,7 +318,10 @@ export async function POST(
         }
       : undefined;
     
-    const response = await githubSaveFile(
+    const atomic = data.type === "media" && config?.object.mediaMetadata && getFileName(normalizedPath) !== ".gitkeep"
+      ? await mutateMediaMetadata({ token, ...params, configObject: config.object, templatesOverride: schemaCommitTemplates, contentName: data.name, user: user.email || user.name || String(user.id || ""), committer }, { action: "save", path: normalizedPath, content: contentBase64, sha: data.sha, classification: data.classification, onConflict })
+      : undefined;
+    const response = atomic ? { data: { content: { type: "file", name: getFileName(atomic.path), path: atomic.path, sha: atomic.sha, size: atomic.size, download_url: undefined }, commit: { sha: atomic.commitSha, committer: undefined } } } : await githubSaveFile(
       token,
       params.owner,
       params.repo,
@@ -388,6 +393,7 @@ export async function POST(
         size: response?.data.content?.size,
         url: response?.data.content?.download_url,
         config: newConfig ?? undefined,
+        ai: atomic?.ai,
       }
     });
   } catch (error: any) {
@@ -618,7 +624,7 @@ export async function DELETE(
         schemaCommitTemplates = schema?.commit?.templates;
         schemaCommitIdentity = schema?.commit?.identity;
 
-        if (!normalizedPath.startsWith(schema.input)) throw new Error(`Invalid path "${params.path}" for media "${name}".`);
+        if (!withinMedia(normalizedPath, schema.input)) throw new Error(`Invalid path "${params.path}" for media "${name}".`);
 
         if (
           schema.extensions?.length > 0 &&
@@ -642,7 +648,7 @@ export async function DELETE(
       : undefined;
     
     const octokit = createOctokitInstance(token);
-    const response = await octokit.rest.repos.deleteFile({
+    const deleteOptions = {
       owner: params.owner,
       repo: params.repo,
       branch: params.branch,
@@ -665,7 +671,11 @@ export async function DELETE(
         }),
       }),
       committer,
-    });
+    };
+    const atomic = type === "media" && config.object.mediaMetadata
+      ? await mutateMediaMetadata({ token, ...params, configObject: config.object, templatesOverride: schemaCommitTemplates, contentName: name || undefined, committer }, { action: "delete", path: normalizedPath, sha })
+      : undefined;
+    const response = atomic ? { data: { content: null, commit: { sha: atomic.commitSha, committer: undefined } } } : await octokit.rest.repos.deleteFile(deleteOptions);
 
     // Update cache after successful deletion
     await updateFileCache(

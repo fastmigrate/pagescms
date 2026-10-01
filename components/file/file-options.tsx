@@ -32,6 +32,7 @@ export function FileOptions({
   sha,
   type,
   name,
+  onAiLabel,
   canDelete,
   canRename,
   portalProps,
@@ -43,6 +44,7 @@ export function FileOptions({
   sha: string;
   type: "collection" | "file" | "media" | "settings";
   name?: string;
+  onAiLabel?: () => void;
   canDelete?: boolean;
   canRename?: boolean;
   portalProps?: any;
@@ -121,6 +123,7 @@ export function FileOptions({
                 <ArrowUpRight className="size-3 text-muted-foreground ml-auto" />
               </a>
             </DropdownMenuItem>
+            {onAiLabel && <DropdownMenuItem onSelect={onAiLabel}>AI-Kennzeichnung</DropdownMenuItem>}
             {(showRename || showDelete)
               ? <>
                   <DropdownMenuSeparator />

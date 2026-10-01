@@ -18,6 +18,7 @@ import { FolderCreate} from "@/components/folder-create";
 import { FileOptions } from "@/components/file/file-options";
 import { useOptionalRepoHeader } from "@/components/repo/repo-header-context";
 import { MediaUpload} from "./media-upload";
+import { MediaAiDialog } from "./media-ai-dialog";
 import { Thumbnail } from "@/components/thumbnail";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -139,6 +140,15 @@ const MediaFileTile = memo(function MediaFileTile({
   onDelete,
   onRename,
 }: MediaFileTileProps) {
+  const { config } = useConfig();
+  const { mutate } = useSWRConfig();
+  const [aiOpen, setAiOpen] = useState(false);
+  const labelable = ['jpg','jpeg','png','webp','avif'].includes(item.extension?.toLowerCase() ?? '');
+  const saveAi = async (selection: { classification?: 'generated' | 'modified' | 'unmarked'; derivedFrom?: string }) => {
+    const response = await fetch(`/api/${config!.owner}/${config!.repo}/${encodeURIComponent(config!.branch)}/media/${encodeURIComponent(mediaName)}/${encodeURIComponent(item.path)}/ai`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({...selection, sha: item.sha, revision: item.ai?.revision})});
+    const result = await requireApiSuccess<{data: NonNullable<MediaItem['ai']>}>(response, 'Kennzeichnung konnte nicht gespeichert werden.');
+    return result.data;
+  };
   const content = (
     <div className={cn(
       "relative rounded-md",
@@ -150,12 +160,14 @@ const MediaFileTile = memo(function MediaFileTile({
             <File className="stroke-[0.5] h-24 w-24"/>
           </div>
       }
+      {item.ai && (item.ai.classification !== 'unmarked' || item.ai.stale) && <span className="absolute top-2 right-2 rounded bg-background px-2 py-1 text-xs font-medium shadow-sm">{item.ai.stale ? 'AI: erneut prüfen' : item.ai.classification === 'generated' ? 'AI GENERATED' : 'AI MODIFIED'}</span>}
       <div className="flex gap-x-2 items-center pt-2">
         <div className="overflow-hidden mr-auto h-9">
           <div className="text-sm font-medium truncate">{item.name}</div>
           <div className="text-xs text-muted-foreground truncate">{displaySize}</div>
         </div>
         <FileOptions
+          onAiLabel={config?.object.mediaMetadata && labelable ? () => setAiOpen(true) : undefined}
           path={item.path}
           sha={item.sha || ""}
           type="media"
@@ -169,6 +181,7 @@ const MediaFileTile = memo(function MediaFileTile({
           </Button>
         </FileOptions>
       </div>
+      {aiOpen && <MediaAiDialog item={item} open={aiOpen} onOpenChange={setAiOpen} save={saveAi} onSaved={() => { void mutate(key => typeof key === 'string' && key.includes('/media/')); }} />}
       {selectable && isSelected && (
         <div className="text-primary-foreground bg-primary p-0.5 rounded-full absolute top-2 left-2">
           <Check className="stroke-[3] w-3 h-3"/>

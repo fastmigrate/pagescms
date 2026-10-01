@@ -15,6 +15,7 @@ interface MediaUploadContextValue {
   accept?: string;
   multiple?: boolean;
   disabled?: boolean;
+  classification?: "generated" | "modified" | "unmarked";
 }
 
 const MediaUploadContext = createContext<MediaUploadContextValue | null>(null);
@@ -28,6 +29,7 @@ interface MediaUploadProps {
   multiple?: boolean;
   rename?: boolean | "safe" | "random";
   disabled?: boolean;
+  classification?: "generated" | "modified" | "unmarked";
 }
 
 interface MediaUploadTriggerProps {
@@ -39,7 +41,7 @@ interface MediaUploadDropZoneProps {
   className?: string;
 }
 
-function MediaUploadRoot({ children, path, onUpload, media, extensions, multiple, rename, disabled = false }: MediaUploadProps) {
+function MediaUploadRoot({ children, path, onUpload, media, extensions, multiple, rename, disabled = false, classification = "unmarked" }: MediaUploadProps) {
   const { config } = useConfig();
   if (!config) throw new Error(`Configuration not found.`);
 
@@ -49,6 +51,8 @@ function MediaUploadRoot({ children, path, onUpload, media, extensions, multiple
       : config.object.media[0],
     [media, config.object]
   );
+
+  const [uploadClassification, setUploadClassification] = useState<"generated" | "modified" | "unmarked">(classification);
 
   const accept = useMemo(() => {
     if (!configMedia?.extensions && !extensions) return undefined;
@@ -95,6 +99,7 @@ function MediaUploadRoot({ children, path, onUpload, media, extensions, multiple
               type: "media",
               name: configMedia.name,
               content,
+              classification: config.object.mediaMetadata ? uploadClassification : undefined,
             }),
           });
 
@@ -118,7 +123,7 @@ function MediaUploadRoot({ children, path, onUpload, media, extensions, multiple
     } catch (error) {
       console.error(error);
     }
-  }, [config, path, configMedia?.name, configMedia?.rename, onUpload, rename]);
+  }, [config, path, configMedia?.name, configMedia?.rename, onUpload, rename, uploadClassification]);
 
   const contextValue = useMemo(() => ({
     handleFiles,
@@ -129,6 +134,11 @@ function MediaUploadRoot({ children, path, onUpload, media, extensions, multiple
 
   return (
     <MediaUploadContext.Provider value={contextValue}>
+      {config.object.mediaMetadata && <label className="flex items-center gap-2 p-2 text-sm">Kennzeichnung neuer Bilder
+        <select name="upload-classification" aria-label="Kennzeichnung neuer Bilder" value={uploadClassification} onChange={event => setUploadClassification(event.target.value as typeof uploadClassification)} className="rounded border bg-background px-2 py-1">
+          <option value="unmarked">Keine Kennzeichnung</option><option value="generated">AI GENERATED</option><option value="modified">AI MODIFIED</option>
+        </select>
+      </label>}
       {children}
     </MediaUploadContext.Provider>
   );

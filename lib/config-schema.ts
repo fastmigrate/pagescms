@@ -814,6 +814,7 @@ const ConfigSchema = z
       })
       .optional(),
     media: MediaSchema.optional(),
+    mediaMetadata: z.string().regex(/^(?!\/)(?!.*(?:^|\/)(?:\.\.?|__proto__|constructor|prototype)(?:\/|$))(?!.*\\)(?!.*\/\/).+\.json$/, "mediaMetadata must be a repository-relative JSON path.").optional(),
     content: z
       .array(ContentObjectSchema, {
         message:

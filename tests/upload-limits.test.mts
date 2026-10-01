@@ -71,6 +71,7 @@ test('actual file API rejects excess media and malformed bodies before any GitHu
   let writes = 0;
   const mocks: Record<string, any> = {
     '@/lib/upload-limits': limits,
+    '@/lib/media-metadata': await import('../lib/media-metadata.ts'),
     '@/lib/session-server': {requireApiUserSession: async () => ({user: {id: 'test'}})},
     '@/lib/token': {getToken: async () => ({token: 'test'})},
     '@/lib/config-store': {getConfig: async () => ({object: {}})},
