@@ -52,6 +52,7 @@ export async function POST(
     if (config?.object.mediaMetadata === normalizedPath) throw createHttpError("The media metadata document is reserved for AI media operations.", 400);
 
     const data: any = await readFileRequest(request);
+    if (config?.object.mediaMetadata && data.type === "media" && Object.hasOwn(data, "derivedFrom")) throw createHttpError("Manual media variants are not supported.", 400);
     const onConflict = data.duplicate != null || data.onConflict === "error"
       ? "error"
       : "rename";

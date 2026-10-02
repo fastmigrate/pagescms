@@ -103,3 +103,10 @@ test('deleting an original preserves unrelated records and unknown fields', asyn
  assert.deepEqual(f.written.assets['media/crop.webp'],f.document.assets['media/crop.webp']);
  assert.deepEqual(f.written.unknown,f.document.unknown);
 });
+
+test('upload and replacement operations reject manual relationships before Git writes', async () => {
+ for(const sha of [undefined,sourceSha]) {
+  const f=fixture();await assert.rejects(f.mutate({action:'save',path:'media/source.jpg',sha,revision:metadata.recordRevision(f.document.assets['media/source.jpg']),content:Buffer.from('new').toString('base64'),classification:'generated',derivedFrom:'media/crop.webp'}),(error:any)=>error.status===400);
+  assert.equal(f.updated,false);assert.equal(f.written,undefined);assert.equal(f.delta,undefined);
+ }
+});

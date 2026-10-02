@@ -10,14 +10,14 @@ function load(file: string, mocks: Record<string, any>) {
  const loadedModule={exports:{} as any};const compiled=ts.transpileModule(readFileSync(new URL(`../${file}`,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;
  new Function('require','module','exports',compiled)((id: string)=>id in mocks ? mocks[id] : require(id),loadedModule,loadedModule.exports);return loadedModule.exports;
 }
-function routeFixture({signedIn=true,allowed=true}={}) {
+function routeFixture({signedIn=true,allowed=true,extensions=[] as string[]}={}) {
  let writes=0;
  const errors=load('lib/api-error.ts',{});
  // Exercise production session and token authorization; only backing auth/DB/GitHub I/O is injected.
  const session=load('lib/session-server.ts',{'next/headers':{headers:async()=>new Headers()},'@/lib/auth':{auth:{api:{getSession:async()=>signedIn ? {user:{id:'test',email:'test@example.invalid'}} : null}}}});
  const token=load('lib/token.ts',{'@octokit/app':{App: class {}},'@/lib/github-account':{getGithubAccount:async()=>({accessToken:'test'})},'@/lib/utils/octokit':{createOctokitInstance:()=>({rest:{repos:{get:async()=>{if(!allowed) throw new Error('denied');return {};}}}})},'@/db':{db:{query:{collaboratorTable:{findFirst:async()=>null}}}},'@/db/schema':{},'@/lib/crypto':{},'@/lib/collaborator-access':{collaboratorMatchesUserForRepo:()=>true},'@/lib/api-error':errors});
  const route=load('app/api/[owner]/[repo]/[branch]/media/[name]/[path]/ai/route.ts',{
-  '@/lib/session-server':session,'@/lib/token':token,'@/lib/config-store':{getConfig:async()=>({object:{mediaMetadata:'data/media.json',media:[{name:'images',input:'media'}]}})},'@/lib/api-error':errors,'@/lib/upload-limits':limits,'@/lib/media-metadata':metadata,
+  '@/lib/session-server':session,'@/lib/token':token,'@/lib/config-store':{getConfig:async()=>({object:{mediaMetadata:'data/media.json',media:[{name:'images',input:'media',extensions}]}})},'@/lib/api-error':errors,'@/lib/upload-limits':limits,'@/lib/media-metadata':metadata,'@/lib/utils/file':load('lib/utils/file.ts',{}),
   '@/lib/github-media-metadata':{mutateMediaMetadata:async()=>{writes++;return {ai:{classification:'generated'}};}},'@/lib/commit-message':{resolveCommitIdentity:()=> 'app'},
  });
  const context=(path='media/image.jpg')=>({params:Promise.resolve({owner:'fixture',repo:'private',branch:'main',name:'images',path})});
@@ -36,6 +36,12 @@ test('actual AI route rejects missing/invalid classifications and manual variant
  for(const selection of [{}, {classification:'invalid'}, {derivedFrom:'media/source.jpg'}, {classification:'generated',derivedFrom:'media/source.jpg'}, {classification:'generated',derivedFrom:null}]) {
   const f=routeFixture();assert.equal((await f.post(f.request({sha:'a'.repeat(40),revision:'b'.repeat(64),...selection}),f.context())).status,400);assert.equal(f.writes,0);
  }
+});
+test('actual AI route enforces the selected media source extension restrictions before writes', async()=>{
+ for(const path of ['media/image.png','media/image.webp','media/image.JPG']) {
+  const f=routeFixture({extensions:['jpg']});assert.equal((await f.post(f.request(),f.context(path))).status,400);assert.equal(f.writes,0);
+ }
+ const allowed=routeFixture({extensions:['jpg']});assert.equal((await allowed.post(allowed.request(),allowed.context())).status,200);assert.equal(allowed.writes,1);
 });
 test('actual AI route authorizes private repository and saves a valid request',async()=>{const f=routeFixture();assert.equal((await f.post(f.request(),f.context())).status,200);assert.equal(f.writes,1);});
 

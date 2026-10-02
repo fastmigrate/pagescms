@@ -94,6 +94,25 @@ test('actual file API rejects excess media and malformed bodies before any GitHu
   assert.equal(writes, 0);
 });
 
+test('actual media upload and replacement routes reject manual relationships before mutation', async () => {
+ let writes=0;
+ const errors={createHttpError:(message:string,status:number)=>Object.assign(new Error(message),{status}),toErrorResponse:(error:any)=>Response.json({message:error.message},{status:error.status??500})};
+ const mocks:Record<string,any>={
+  '@/lib/upload-limits':await import('../lib/upload-limits.ts'),'@/lib/media-metadata':await import('../lib/media-metadata.ts'),
+  '@/lib/session-server':{requireApiUserSession:async()=>({user:{id:'test'}})},'@/lib/token':{getToken:async()=>({token:'test'})},
+  '@/lib/config-store':{getConfig:async()=>({object:{mediaMetadata:'data/media.json'}})},'@/lib/utils/file':{normalizePath:(path:string)=>path},'@/lib/api-error':errors,
+  '@/lib/github-media-metadata':{mutateMediaMetadata:async()=>{writes++;throw new Error('Unexpected mutation');}},
+  '@/lib/utils/octokit':{createOctokitInstance:()=>{writes++;throw new Error('Unexpected GitHub access');}},
+ };
+ const compiled=ts.transpileModule(readFileSync(new URL('../app/api/[owner]/[repo]/[branch]/files/[path]/route.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,esModuleInterop:true}}).outputText;
+ const route={exports:{} as any};new Function('require','module','exports',compiled)((id:string)=>mocks[id]??{},route,route.exports);
+ for(const sha of [undefined,'a'.repeat(40)])for(const derivedFrom of ['images/source.jpg',null]) {
+  const request=new Request('https://cms.test/api/o/r/main/files/images%2Ftest.jpg',{method:'POST',headers:{host:'cms.test',origin:'https://cms.test'},body:JSON.stringify({type:'media',name:'images',content:Buffer.from('new').toString('base64'),classification:'generated',sha,derivedFrom})});
+  assert.equal((await route.exports.POST(request,{params:Promise.resolve({owner:'o',repo:'r',branch:'main',path:'images/test.jpg'})})).status,400);
+ }
+ assert.equal(writes,0);
+});
+
 test('generic content/media writes cannot overwrite, delete or rename the reserved manifest', async () => {
   const mocks: Record<string, any> = {
     '@/lib/upload-limits': await import('../lib/upload-limits.ts'),

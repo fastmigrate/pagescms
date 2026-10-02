@@ -4,6 +4,7 @@ import { getConfig } from "@/lib/config-store";
 import { createHttpError, toErrorResponse } from "@/lib/api-error";
 import { assertFileWriteOrigin, readFileRequest } from "@/lib/upload-limits";
 import { assertRepositoryPath, withinMedia } from "@/lib/media-metadata";
+import { getFileExtension } from "@/lib/utils/file";
 import { mutateMediaMetadata } from "@/lib/github-media-metadata";
 import { resolveCommitIdentity } from "@/lib/commit-message";
 
@@ -20,6 +21,7 @@ export async function POST(request: Request, context: { params: Promise<{ owner:
     assertRepositoryPath(params.path);
     const media = config.object.media?.find((item: any) => item.name === params.name);
     if (!media || !withinMedia(params.path, media.input)) throw createHttpError("Invalid media path.", 400);
+    if (media.extensions?.length > 0 && !media.extensions.includes(getFileExtension(params.path))) throw createHttpError("Invalid extension for media.", 400);
     const data = await readFileRequest(request);
     if (typeof data.sha !== "string" || typeof data.revision !== "string") throw createHttpError("Source SHA and metadata revision are required.", 400);
     if (!["generated", "modified", "unmarked"].includes(data.classification) || Object.hasOwn(data, "derivedFrom")) throw createHttpError("An explicit AI classification is required; manual variants are not supported.", 400);

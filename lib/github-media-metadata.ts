@@ -48,6 +48,7 @@ export async function readMediaMetadataStatus(token: string, ref: Ref, metadataP
 
 export async function mutateMediaMetadata(options: Options, operation: Operation) {
   const { owner, repo, branch, token, configObject } = options;
+  if ((operation.action === "classify" || operation.action === "save") && Object.hasOwn(operation, "derivedFrom")) throw createHttpError("Manual media variants are not supported.", 400);
   const metadataPath = configObject.mediaMetadata;
   assertRepositoryPath(metadataPath);
   assertRepositoryPath(operation.path);
@@ -80,7 +81,7 @@ export async function mutateMediaMetadata(options: Options, operation: Operation
   if (operation.action === "classify") {
     if (!isLabelable(savedPath)) throw createHttpError("AI labels support static JPEG, PNG, WebP and AVIF only.", 400);
     if (recordRevision(doc.assets[savedPath]) !== operation.revision) throw createHttpError("AI classification has changed. Refresh and retry.", 409);
-    if (!["generated", "modified", "unmarked"].includes(operation.classification) || Object.hasOwn(operation, "derivedFrom")) throw createHttpError("An explicit AI classification is required; manual variants are not supported.", 400);
+    if (!["generated", "modified", "unmarked"].includes(operation.classification)) throw createHttpError("An explicit AI classification is required; manual variants are not supported.", 400);
     const { data } = await octokit.rest.git.getBlob({ ...ref, file_sha: source!.sha! });
     const previousRecord = doc.assets[savedPath];
     const currentFingerprint = fingerprint(Buffer.from(data.content, "base64"));
