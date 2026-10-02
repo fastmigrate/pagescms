@@ -61,6 +61,7 @@ export function FileRename({
             body: JSON.stringify({
               type: (type === "collection" || type === "file") ? "content" : type,
               name,
+              sha,
               newPath,
             }),
           });

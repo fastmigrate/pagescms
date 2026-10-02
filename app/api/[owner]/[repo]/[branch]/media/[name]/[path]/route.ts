@@ -1,3 +1,5 @@
+import { readMediaMetadataStatus } from "@/lib/github-media-metadata";
+import { effectiveClassification, recordRevision, withinMedia } from "@/lib/media-metadata";
 import { getRepoReadContext } from "@/lib/api-repo-context";
 import { getFileExtension, normalizePath } from "@/lib/utils/file";
 import { getMediaCache } from "@/lib/github-cache-file";
@@ -32,7 +34,7 @@ export async function GET(
       params.repo,
       params.branch,
     );
-    if (!normalizedPath.startsWith(mediaConfig.input)) throw createHttpError(`Invalid path "${params.path}" for media "${params.name}".`, 400);
+    if (!withinMedia(normalizedPath, mediaConfig.input)) throw createHttpError(`Invalid path "${params.path}" for media "${params.name}".`, 400);
 
     const { searchParams } = new URL(request.url);
     const nocache = searchParams.get('nocache');
@@ -64,12 +66,15 @@ export async function GET(
       }
     });
 
+    const snapshot = config.object.mediaMetadata ? await readMediaMetadataStatus(token, params, config.object.mediaMetadata) : undefined;
+    const metadata = snapshot?.metadata;
     return Response.json({
       status: "success",
       data: results.map((item: any) => {
         return {
+          ai: metadata && item.type === "file" ? { classification: effectiveClassification(metadata, item.path), record: metadata.assets[item.path], revision: recordRevision(metadata.assets[item.path]), stale: !!snapshot?.stale.get(item.path) } : undefined,
           type: item.type,
-          sha: item.sha,
+          sha: item.type === "file" ? snapshot?.sources.get(item.path) ?? item.sha : item.sha,
           name: item.name,
           path: item.path,
           extension: item.type === "dir" ? undefined : getFileExtension(item.name),

@@ -35,6 +35,7 @@ export type EntryData = {
 };
 
 export type FileSaveData = {
+  ai?: MediaItem["ai"];
   type?: string;
   sha?: string;
   name?: string;
@@ -46,6 +47,7 @@ export type FileSaveData = {
 };
 
 export type MediaItem = {
+  ai?: { classification: "generated" | "modified" | "unmarked"; record?: { classification: "generated" | "modified" | "unmarked" }; revision: string; stale: boolean };
   type: "dir" | "file";
   sha?: string;
   name: string;

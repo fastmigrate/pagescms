@@ -1,3 +1,6 @@
+import { mutateMediaMetadata } from "@/lib/github-media-metadata";
+import { withinMedia } from "@/lib/media-metadata";
+import { assertFileWriteOrigin, readFileRequest } from "@/lib/upload-limits";
 import { createOctokitInstance } from "@/lib/utils/octokit";
 import { isContentOperationAllowed } from "@/lib/operations";
 import { getSchemaByName } from "@/lib/schema";
@@ -23,6 +26,7 @@ export async function POST(
   context: { params: Promise<{ owner: string, repo: string, branch: string, path: string }> }
 ) {
   try {
+    assertFileWriteOrigin(request);
     const params = await context.params;
     const sessionResult = await requireApiUserSession();
     if ("response" in sessionResult) return sessionResult.response;
@@ -40,7 +44,7 @@ export async function POST(
     });
     if (!config) throw new Error(`Configuration not found for ${params.owner}/${params.repo}/${params.branch}.`);
 
-    const data: any = await request.json();
+    const data: any = await readFileRequest(request);
 
     if (!data.type || !["content", "media"].includes(data.type)) throw new Error(`"type" is required and must be set to "content" or "media".`);
     if (!data.name && data.type === "content") throw new Error(`"name" is required.`);
@@ -48,6 +52,7 @@ export async function POST(
 
     const normalizedPath = normalizePath(params.path);
     const normalizedNewPath = normalizePath(data.newPath);
+    if ([normalizedPath, normalizedNewPath].includes(config.object.mediaMetadata)) throw createHttpError("The media metadata document is reserved for AI media operations.", 400);
     if (normalizedPath === normalizedNewPath) throw new Error(`New path "${data.newPath}" is the same as the old path.`);
 
     let schema;
@@ -82,8 +87,8 @@ export async function POST(
         schemaCommitTemplates = schema?.commit?.templates;
         schemaCommitIdentity = schema?.commit?.identity;
         
-        if (!normalizedPath.startsWith(schema.input)) throw new Error(`Invalid path "${params.path}" for media.`);
-        if (!normalizedNewPath.startsWith(schema.input)) throw new Error(`Invalid path "${data.newPath}" for media.`);
+        if (!withinMedia(normalizedPath, schema.input)) throw new Error(`Invalid path "${params.path}" for media.`);
+        if (!withinMedia(normalizedNewPath, schema.input)) throw new Error(`Invalid path "${data.newPath}" for media.`);
         
         if (
           schema.extensions?.length > 0 &&
@@ -110,7 +115,10 @@ export async function POST(
         }
       : undefined;
     
-    const response = await githubRenameFile(
+    const atomic = data.type === "media" && config.object.mediaMetadata
+      ? await mutateMediaMetadata({ token, ...params, configObject: config.object, templatesOverride: schemaCommitTemplates, contentName: data.name, user: user.email || user.name || String(user.id || ""), committer }, { action: "rename", path: normalizedPath, newPath: normalizedNewPath, sha: data.sha })
+      : undefined;
+    const response = atomic ? { sha: atomic.commitSha, path: normalizedPath, newPath: normalizedNewPath } : await githubRenameFile(
       token,
       params.owner,
       params.repo,

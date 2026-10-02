@@ -2,7 +2,7 @@
 
 import { useRef, cloneElement, useMemo, useCallback, createContext, useContext, useState } from "react";
 import { useConfig } from "@/contexts/config-context";
-import { getUploadFileName, joinPathSegments } from "@/lib/utils/file";
+import { getUploadFileName, joinPathSegments, getFileExtension } from "@/lib/utils/file";
 import { toast } from "sonner";
 import { assertUploadSize } from "@/lib/upload-limits";
 import { getSchemaByName } from "@/lib/schema";
@@ -15,11 +15,15 @@ interface MediaUploadContextValue {
   accept?: string;
   multiple?: boolean;
   disabled?: boolean;
+  classification?: "generated" | "modified" | "unmarked";
 }
 
 const MediaUploadContext = createContext<MediaUploadContextValue | null>(null);
 
 interface MediaUploadProps {
+  uploadFile?: (path: string, payload: Record<string, unknown>) => Promise<FileSaveData>;
+  onClassificationChange?: (value: "generated" | "modified" | "unmarked") => void;
+  showClassification?: boolean;
   children: React.ReactNode;
   path?: string;
   onUpload?: (entry: FileSaveData) => void;
@@ -28,6 +32,7 @@ interface MediaUploadProps {
   multiple?: boolean;
   rename?: boolean | "safe" | "random";
   disabled?: boolean;
+  classification?: "generated" | "modified" | "unmarked";
 }
 
 interface MediaUploadTriggerProps {
@@ -39,7 +44,7 @@ interface MediaUploadDropZoneProps {
   className?: string;
 }
 
-function MediaUploadRoot({ children, path, onUpload, media, extensions, multiple, rename, disabled = false }: MediaUploadProps) {
+function MediaUploadRoot({ children, path, onUpload, media, extensions, multiple, rename, disabled = false, classification = "unmarked", onClassificationChange, showClassification = true, uploadFile }: MediaUploadProps) {
   const { config } = useConfig();
   if (!config) throw new Error(`Configuration not found.`);
 
@@ -49,6 +54,9 @@ function MediaUploadRoot({ children, path, onUpload, media, extensions, multiple
       : config.object.media[0],
     [media, config.object]
   );
+
+  const [localClassification, setLocalClassification] = useState<"generated" | "modified" | "unmarked">(classification);
+  const uploadClassification = onClassificationChange ? classification : localClassification;
 
   const accept = useMemo(() => {
     if (!configMedia?.extensions && !extensions) return undefined;
@@ -88,21 +96,15 @@ function MediaUploadRoot({ children, path, onUpload, media, extensions, multiple
           });
 
           const fullPath = joinPathSegments([path ?? "", uploadFilename]);
+          const payload = {
+            type: "media", name: configMedia.name, content,
+            classification: config.object.mediaMetadata ? (["jpg", "jpeg", "png", "webp", "avif"].includes(getFileExtension(uploadFilename).toLowerCase()) ? uploadClassification : "unmarked") : undefined,
+          };
+          if (uploadFile) return uploadFile(fullPath, payload);
           const response = await fetch(`/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/files/${encodeURIComponent(fullPath)}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              type: "media",
-              name: configMedia.name,
-              content,
-            }),
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
           });
-
-          const data = await requireApiSuccess<any>(
-            response,
-            "Failed to upload file",
-          );
-
+          const data = await requireApiSuccess<any>(response, "Failed to upload file");
           return data.data as FileSaveData;
         })();
 
@@ -118,7 +120,7 @@ function MediaUploadRoot({ children, path, onUpload, media, extensions, multiple
     } catch (error) {
       console.error(error);
     }
-  }, [config, path, configMedia?.name, configMedia?.rename, onUpload, rename]);
+  }, [uploadFile, config, path, configMedia?.name, configMedia?.rename, onUpload, rename, uploadClassification]);
 
   const contextValue = useMemo(() => ({
     handleFiles,
@@ -129,6 +131,11 @@ function MediaUploadRoot({ children, path, onUpload, media, extensions, multiple
 
   return (
     <MediaUploadContext.Provider value={contextValue}>
+      {showClassification && config.object.mediaMetadata && <label className="flex items-center gap-2 p-2 text-sm">Kennzeichnung neuer Bilder
+        <select name="upload-classification" aria-label="Kennzeichnung neuer Bilder" value={uploadClassification} onChange={event => (onClassificationChange ?? setLocalClassification)(event.target.value as typeof uploadClassification)} className="rounded border bg-background px-2 py-1">
+          <option value="unmarked">Keine Kennzeichnung</option><option value="generated">AI GENERATED</option><option value="modified">AI MODIFIED</option>
+        </select>
+      </label>}
       {children}
     </MediaUploadContext.Provider>
   );

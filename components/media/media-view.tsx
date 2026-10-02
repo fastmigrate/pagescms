@@ -18,6 +18,7 @@ import { FolderCreate} from "@/components/folder-create";
 import { FileOptions } from "@/components/file/file-options";
 import { useOptionalRepoHeader } from "@/components/repo/repo-header-context";
 import { MediaUpload} from "./media-upload";
+import { MediaAiDialog } from "./media-ai-dialog";
 import { Thumbnail } from "@/components/thumbnail";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -115,6 +116,7 @@ const MediaFolderTile = memo(function MediaFolderTile({ item, onNavigate }: Medi
 });
 
 type MediaFileTileProps = {
+  classify?: (item: MediaItem, selection: {classification: "generated" | "modified" | "unmarked"}) => Promise<NonNullable<MediaItem["ai"]>>;
   item: MediaItem;
   mediaName: string;
   selectable: boolean;
@@ -127,7 +129,8 @@ type MediaFileTileProps = {
   onRename: (path: string, newPath: string) => void;
 };
 
-const MediaFileTile = memo(function MediaFileTile({
+export const MediaFileTile = memo(function MediaFileTile({
+  classify,
   item,
   mediaName,
   selectable,
@@ -139,6 +142,17 @@ const MediaFileTile = memo(function MediaFileTile({
   onDelete,
   onRename,
 }: MediaFileTileProps) {
+  const { config } = useConfig();
+  const { mutate } = useSWRConfig();
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiItem, setAiItem] = useState<MediaItem>();
+  const labelable = ['jpg','jpeg','png','webp','avif'].includes(item.extension?.toLowerCase() ?? '');
+  const saveAi = async (selection: { classification: 'generated' | 'modified' | 'unmarked' }) => {
+    if (classify) return classify(aiItem!, selection);
+    const response = await fetch(`/api/${config!.owner}/${config!.repo}/${encodeURIComponent(config!.branch)}/media/${encodeURIComponent(mediaName)}/${encodeURIComponent(item.path)}/ai`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({...selection, sha: aiItem?.sha, revision: aiItem?.ai?.revision})});
+    const result = await requireApiSuccess<{data: NonNullable<MediaItem['ai']>}>(response, 'Kennzeichnung konnte nicht gespeichert werden.');
+    return result.data;
+  };
   const content = (
     <div className={cn(
       "relative rounded-md",
@@ -150,12 +164,14 @@ const MediaFileTile = memo(function MediaFileTile({
             <File className="stroke-[0.5] h-24 w-24"/>
           </div>
       }
+      {item.ai && (item.ai.classification !== 'unmarked' || item.ai.stale) && <span className="absolute top-2 right-2 rounded bg-background px-2 py-1 text-xs font-medium shadow-sm">{item.ai.stale ? 'AI: erneut prüfen' : item.ai.classification === 'generated' ? 'AI GENERATED' : 'AI MODIFIED'}</span>}
       <div className="flex gap-x-2 items-center pt-2">
         <div className="overflow-hidden mr-auto h-9">
           <div className="text-sm font-medium truncate">{item.name}</div>
           <div className="text-xs text-muted-foreground truncate">{displaySize}</div>
         </div>
         <FileOptions
+          onAiLabel={config?.object.mediaMetadata && labelable ? () => { setAiItem(item); setAiOpen(true); } : undefined}
           path={item.path}
           sha={item.sha || ""}
           type="media"
@@ -169,6 +185,7 @@ const MediaFileTile = memo(function MediaFileTile({
           </Button>
         </FileOptions>
       </div>
+      {aiOpen && <MediaAiDialog item={aiItem!} open={aiOpen} onOpenChange={setAiOpen} save={saveAi} onSaved={() => { void mutate(key => typeof key === 'string' && key.includes('/media/')); }} />}
       {selectable && isSelected && (
         <div className="text-primary-foreground bg-primary p-0.5 rounded-full absolute top-2 left-2">
           <Check className="stroke-[3] w-3 h-3"/>
@@ -267,6 +284,7 @@ const MediaView = ({
     return mediaConfig.input;
   });
   const [data, setData] = useState<MediaItem[] | undefined>(undefined);
+  const [uploadClassification, setUploadClassification] = useState<"generated" | "modified" | "unmarked">("unmarked");
   
   // Filter the data based on filteredExtensions when displaying
   const filteredData = useMemo(() => {
@@ -337,6 +355,7 @@ const MediaView = ({
       extension: entry.extension,
       size: entry.size,
       url: entry.url,
+      ai: entry.ai,
     };
 
     setData((prevData) => {
@@ -571,7 +590,7 @@ const MediaView = ({
   const headerNode = useMemo(() => (
     <div className="flex items-center justify-between gap-x-2">
       <div className="min-w-0 truncate overflow-hidden">{breadcrumbNode}</div>
-      <MediaUpload media={mediaConfig.name} path={path} onUpload={handleUpload} extensions={filteredExtensions}>
+      <MediaUpload showClassification={false} classification={uploadClassification} onClassificationChange={setUploadClassification} media={mediaConfig.name} path={path} onUpload={handleUpload} extensions={filteredExtensions}>
         <MediaHeaderActions
           actionNode={mediaActions.length > 0 ? (
             <RepoActionButtons
@@ -595,7 +614,7 @@ const MediaView = ({
         />
       </MediaUpload>
     </div>
-  ), [breadcrumbNode, config.branch, config.owner, config.repo, filteredExtensions, handleFolderCreate, handleUpload, mediaActions, mediaConfig.input, mediaConfig.label, mediaConfig.name, mediaConfig.output, path]);
+  ), [uploadClassification, breadcrumbNode, config.branch, config.owner, config.repo, filteredExtensions, handleFolderCreate, handleUpload, mediaActions, mediaConfig.input, mediaConfig.label, mediaConfig.name, mediaConfig.output, path]);
 
   useOptionalRepoHeader(
     { header: headerNode },
@@ -705,7 +724,7 @@ const MediaView = ({
 
   if (!usePageHeader) {
     return (
-      <MediaUpload media={mediaConfig.name} path={path} onUpload={handleUpload} extensions={filteredExtensions}>
+      <MediaUpload classification={uploadClassification} onClassificationChange={setUploadClassification} media={mediaConfig.name} path={path} onUpload={handleUpload} extensions={filteredExtensions}>
         <div className="flex-1 flex flex-col space-y-4">
           <header className="flex items-center gap-x-2 justify-between">
             <div className="sm:flex-1">
@@ -744,7 +763,7 @@ const MediaView = ({
 
   return (
     <div className="flex-1 flex flex-col space-y-4">
-      <MediaUpload media={mediaConfig.name} path={path} onUpload={handleUpload} extensions={filteredExtensions}>
+      <MediaUpload classification={uploadClassification} onClassificationChange={setUploadClassification} media={mediaConfig.name} path={path} onUpload={handleUpload} extensions={filteredExtensions}>
         {mediaGrid}
       </MediaUpload>
     </div>
