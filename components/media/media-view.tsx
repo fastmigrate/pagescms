@@ -1,5 +1,4 @@
 "use client";
-import dynamic from "next/dynamic";
 
 import { Fragment, memo, type ReactNode, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -117,7 +116,7 @@ const MediaFolderTile = memo(function MediaFolderTile({ item, onNavigate }: Medi
 });
 
 type MediaFileTileProps = {
-  classify?: (item: MediaItem, selection: {classification?: "generated" | "modified" | "unmarked"; derivedFrom?: string}) => Promise<NonNullable<MediaItem["ai"]>>;
+  classify?: (item: MediaItem, selection: {classification: "generated" | "modified" | "unmarked"}) => Promise<NonNullable<MediaItem["ai"]>>;
   item: MediaItem;
   mediaName: string;
   selectable: boolean;
@@ -129,8 +128,6 @@ type MediaFileTileProps = {
   onDelete: (path: string) => void;
   onRename: (path: string, newPath: string) => void;
 };
-
-const AiSourceDialog = dynamic(() => import("./media-dialog").then(module => module.MediaDialog));
 
 export const MediaFileTile = memo(function MediaFileTile({
   classify,
@@ -150,7 +147,7 @@ export const MediaFileTile = memo(function MediaFileTile({
   const [aiOpen, setAiOpen] = useState(false);
   const [aiItem, setAiItem] = useState<MediaItem>();
   const labelable = ['jpg','jpeg','png','webp','avif'].includes(item.extension?.toLowerCase() ?? '');
-  const saveAi = async (selection: { classification?: 'generated' | 'modified' | 'unmarked'; derivedFrom?: string }) => {
+  const saveAi = async (selection: { classification: 'generated' | 'modified' | 'unmarked' }) => {
     if (classify) return classify(aiItem!, selection);
     const response = await fetch(`/api/${config!.owner}/${config!.repo}/${encodeURIComponent(config!.branch)}/media/${encodeURIComponent(mediaName)}/${encodeURIComponent(item.path)}/ai`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({...selection, sha: aiItem?.sha, revision: aiItem?.ai?.revision})});
     const result = await requireApiSuccess<{data: NonNullable<MediaItem['ai']>}>(response, 'Kennzeichnung konnte nicht gespeichert werden.');
@@ -188,7 +185,7 @@ export const MediaFileTile = memo(function MediaFileTile({
           </Button>
         </FileOptions>
       </div>
-      {aiOpen && <MediaAiDialog sourcePicker={select => <AiSourceDialog media={mediaName} maxSelected={1} extensions={["jpg", "jpeg", "png", "webp", "avif"]} onSubmit={paths => { if (paths[0]) select(paths[0]); }}><Button type="button" variant="outline">Originalbild auswählen</Button></AiSourceDialog>} item={aiItem!} open={aiOpen} onOpenChange={setAiOpen} save={saveAi} onSaved={() => { void mutate(key => typeof key === 'string' && key.includes('/media/')); }} />}
+      {aiOpen && <MediaAiDialog item={aiItem!} open={aiOpen} onOpenChange={setAiOpen} save={saveAi} onSaved={() => { void mutate(key => typeof key === 'string' && key.includes('/media/')); }} />}
       {selectable && isSelected && (
         <div className="text-primary-foreground bg-primary p-0.5 rounded-full absolute top-2 left-2">
           <Check className="stroke-[3] w-3 h-3"/>

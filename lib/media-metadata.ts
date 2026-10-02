@@ -2,8 +2,7 @@ import { createHash } from "node:crypto";
 
 export type Classification = "generated" | "modified" | "unmarked";
 export type AssetRecord = {
-  classification?: Classification;
-  derivedFrom?: string;
+  classification: Classification;
   sourceSha256: string;
   sourceGitSha?: string;
   [key: string]: unknown;
@@ -30,49 +29,14 @@ export function parseMediaMetadata(value: unknown): MediaMetadata {
     assertRepositoryPath(path);
     if (!record || typeof record !== "object" || Array.isArray(record) || !/^[a-f0-9]{64}$/.test(record.sourceSha256)) throw new Error(`Invalid media fingerprint: ${path}`);
     if (record.sourceGitSha !== undefined && !/^[a-f0-9]{40}$/.test(record.sourceGitSha)) throw new Error(`Invalid Git fingerprint: ${path}`);
-    if (record.classification !== undefined && !["generated", "modified", "unmarked"].includes(record.classification)) throw new Error(`Invalid classification: ${path}`);
-    if (record.derivedFrom !== undefined) {
-      assertRepositoryPath(record.derivedFrom);
-      if (!Object.hasOwn(doc.assets, record.derivedFrom)) throw new Error(`Missing derivative source: ${path}`);
-    }
-    if (record.classification === undefined && !record.derivedFrom) throw new Error(`Missing classification: ${path}`);
+    if (!["generated", "modified", "unmarked"].includes(record.classification)) throw new Error(`Invalid or missing classification: ${path}`);
+    if (Object.hasOwn(record, "derivedFrom")) throw new Error(`Manual media derivation is not supported: ${path}`);
     if (!isLabelable(path)) throw new Error(`AI labels support static JPEG, PNG, WebP and AVIF only: ${path}`);
   }
-  resolveClassifications(doc);
   return doc;
 }
-export function resolveClassifications(doc: MediaMetadata): Map<string, Classification> {
-  const resolved = new Map<string, Classification>();
-  for (const start of Object.keys(doc.assets)) {
-    if (resolved.has(start)) continue;
-    const chain: string[] = [];
-    const visiting = new Set<string>();
-    let current = start;
-    while (Object.hasOwn(doc.assets, current) && !resolved.has(current)) {
-      if (visiting.has(current)) throw new Error("Cyclic media derivation.");
-      visiting.add(current); chain.push(current);
-      current = doc.assets[current].derivedFrom ?? "";
-    }
-    let origin: Classification = resolved.get(current) ?? "unmarked";
-    for (const path of chain.reverse()) {
-      origin = doc.assets[path].classification ?? origin;
-      resolved.set(path, origin);
-    }
-  }
-  return resolved;
-}
 export function effectiveClassification(doc: MediaMetadata, path: string): Classification {
-  const seen = new Set<string>();
-  let classification: Classification | undefined;
-  while (Object.hasOwn(doc.assets, path)) {
-    if (seen.has(path)) throw new Error("Cyclic media derivation.");
-    seen.add(path);
-    const record = doc.assets[path];
-    classification ??= record.classification;
-    if (!record.derivedFrom) break;
-    path = record.derivedFrom;
-  }
-  return classification ?? "unmarked";
+  return Object.hasOwn(doc.assets, path) ? doc.assets[path].classification : "unmarked";
 }
 export function fingerprint(bytes: Buffer | string) {
   return createHash("sha256").update(bytes).digest("hex");
@@ -83,16 +47,7 @@ export function recordRevision(record?: AssetRecord) {
 export function renameRecords(doc: MediaMetadata, from: string, to: string) {
   if (Object.hasOwn(doc.assets, to)) throw new Error("Destination metadata already exists.");
   if (Object.hasOwn(doc.assets, from)) { doc.assets[to] = doc.assets[from]; delete doc.assets[from]; }
-  for (const record of Object.values(doc.assets)) if (record.derivedFrom === from) record.derivedFrom = to;
 }
 export function deleteRecord(doc: MediaMetadata, path: string) {
-  const resolved = resolveClassifications(doc);
-  // Preserve each direct descendant's effective label before unlinking it.
-  for (const [child, record] of Object.entries(doc.assets)) {
-    if (record.derivedFrom === path) {
-      record.classification ??= resolved.get(child) ?? "unmarked";
-      delete record.derivedFrom;
-    }
-  }
   delete doc.assets[path];
 }

@@ -22,9 +22,10 @@ export async function POST(request: Request, context: { params: Promise<{ owner:
     if (!media || !withinMedia(params.path, media.input)) throw createHttpError("Invalid media path.", 400);
     const data = await readFileRequest(request);
     if (typeof data.sha !== "string" || typeof data.revision !== "string") throw createHttpError("Source SHA and metadata revision are required.", 400);
+    if (!["generated", "modified", "unmarked"].includes(data.classification) || Object.hasOwn(data, "derivedFrom")) throw createHttpError("An explicit AI classification is required; manual variants are not supported.", 400);
     const identity = resolveCommitIdentity({ configObject: config.object, identityOverride: media.commit?.identity });
     const committer = identity === "user" && session.user.email ? { name: session.user.name?.trim() || session.user.email, email: session.user.email } : undefined;
-    const result = await mutateMediaMetadata({ token, ...params, configObject: config.object, committer, contentName: media.name, user: session.user.email || session.user.name || String(session.user.id || ""), templatesOverride: media.commit?.templates }, { action: "classify", path: params.path, sha: data.sha, revision: data.revision, classification: data.classification, derivedFrom: data.derivedFrom });
+    const result = await mutateMediaMetadata({ token, ...params, configObject: config.object, committer, contentName: media.name, user: session.user.email || session.user.name || String(session.user.id || ""), templatesOverride: media.commit?.templates }, { action: "classify", path: params.path, sha: data.sha, revision: data.revision, classification: data.classification });
     return Response.json({ status: "success", data: result.ai });
   } catch (error) { return toErrorResponse(error); }
 }

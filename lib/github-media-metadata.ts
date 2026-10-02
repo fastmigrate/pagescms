@@ -2,12 +2,12 @@ import { createOctokitInstance } from "@/lib/utils/octokit";
 import { createHttpError } from "@/lib/api-error";
 import { setBranchHeadSha } from "@/lib/github-cache-file";
 import { buildCommitTokens, resolveCommitMessage } from "@/lib/commit-message";
-import { assertRepositoryPath, deleteRecord, effectiveClassification, fingerprint, isLabelable, parseMediaMetadata, recordRevision, renameRecords, withinMedia, type Classification, type MediaMetadata } from "@/lib/media-metadata";
+import { assertRepositoryPath, deleteRecord, effectiveClassification, fingerprint, isLabelable, parseMediaMetadata, recordRevision, renameRecords, type Classification, type MediaMetadata } from "@/lib/media-metadata";
 
 type Ref = { owner: string; repo: string; branch: string };
 type Options = Ref & { token: string; configObject: Record<string, any>; committer?: { name: string; email: string }; templatesOverride?: Record<string, string>; contentName?: string; user?: string };
 type Operation =
-  | { action: "classify"; path: string; sha: string; classification?: Classification; derivedFrom?: string; revision: string }
+  | { action: "classify"; path: string; sha: string; classification: Classification; revision: string }
   | { action: "save"; path: string; sha?: string; content: string; classification?: Classification; onConflict?: "error" | "rename"; revision?: string }
   | { action: "rename"; path: string; newPath: string; sha?: string }
   | { action: "delete"; path: string; sha: string };
@@ -27,7 +27,7 @@ export async function readMediaMetadata(token: string, ref: Ref, metadataPath: s
   }
 }
 
-// Bind listing trust, including ancestors in other folders, to one fresh Git snapshot.
+// Bind each source classification to one fresh Git snapshot.
 export async function readMediaMetadataStatus(token: string, ref: Ref, metadataPath: string) {
   const octokit = createOctokitInstance(token);
   const repository = {owner: ref.owner, repo: ref.repo};
@@ -40,19 +40,8 @@ export async function readMediaMetadataStatus(token: string, ref: Ref, metadataP
   // A truncated tree cannot prove that an omitted source is unchanged.
   const sources = new Map(tree.tree.filter(entry => entry.type === 'blob' && entry.mode !== '120000').map(entry => [entry.path!, entry.sha]));
   const stale = new Map<string, boolean>();
-  for (const start of Object.keys(metadata.assets)) {
-    if (stale.has(start)) continue;
-    const chain: string[] = [];
-    let current = start;
-    while (Object.hasOwn(metadata.assets, current) && !stale.has(current)) {
-      chain.push(current); current = metadata.assets[current].derivedFrom ?? '';
-    }
-    let untrusted = stale.get(current) ?? false;
-    for (const path of chain.reverse()) {
-      const record = metadata.assets[path];
-      untrusted ||= !!tree.truncated || !record.sourceGitSha || sources.get(path) !== record.sourceGitSha;
-      stale.set(path, untrusted);
-    }
+  for (const [path, record] of Object.entries(metadata.assets)) {
+    stale.set(path, !!tree.truncated || !record.sourceGitSha || sources.get(path) !== record.sourceGitSha);
   }
   return {metadata, stale};
 }
@@ -91,34 +80,11 @@ export async function mutateMediaMetadata(options: Options, operation: Operation
   if (operation.action === "classify") {
     if (!isLabelable(savedPath)) throw createHttpError("AI labels support static JPEG, PNG, WebP and AVIF only.", 400);
     if (recordRevision(doc.assets[savedPath]) !== operation.revision) throw createHttpError("AI classification has changed. Refresh and retry.", 409);
-    if (operation.classification === undefined && !operation.derivedFrom) throw createHttpError("Classification or derivative source is required.", 400);
-    if (operation.derivedFrom) {
-      assertRepositoryPath(operation.derivedFrom);
-      if (!(configObject.media ?? []).some((media: any) => withinMedia(operation.derivedFrom!, media.input))) throw createHttpError("Derivative source is outside configured media.", 400);
-      if (!Object.hasOwn(doc.assets, operation.derivedFrom)) throw createHttpError("Original image must have an AI classification first.", 400);
-      if (!entries.has(operation.derivedFrom)) throw createHttpError("Derivative source not found.", 404);
-    }
-    let ancestor = operation.derivedFrom;
-    const seen = new Set<string>();
-    while (ancestor && Object.hasOwn(doc.assets, ancestor)) {
-      if (seen.has(ancestor) || ancestor === savedPath) throw createHttpError("Cyclic media derivation.", 400);
-      seen.add(ancestor);
-      const record = doc.assets[ancestor];
-      if (record.sourceGitSha && entries.get(ancestor)?.sha !== record.sourceGitSha) throw createHttpError("Derivative source changed. Review its AI classification first.", 409);
-      if (!record.sourceGitSha) {
-        const entry = entries.get(ancestor);
-        if (!entry || entry.type !== "blob" || entry.mode === "120000") throw createHttpError("Derivative source not found.", 404);
-        const { data: ancestorBlob } = await octokit.rest.git.getBlob({ ...ref, file_sha: entry.sha! });
-        if (fingerprint(Buffer.from(ancestorBlob.content, "base64")) !== record.sourceSha256) throw createHttpError("Derivative source changed. Review its AI classification first.", 409);
-      }
-      ancestor = record.derivedFrom;
-    }
-    if (operation.classification !== undefined && !["generated", "modified", "unmarked"].includes(operation.classification)) throw createHttpError("Invalid AI classification.", 400);
+    if (!["generated", "modified", "unmarked"].includes(operation.classification) || Object.hasOwn(operation, "derivedFrom")) throw createHttpError("An explicit AI classification is required; manual variants are not supported.", 400);
     const { data } = await octokit.rest.git.getBlob({ ...ref, file_sha: source!.sha! });
     const previousRecord = doc.assets[savedPath];
     const currentFingerprint = fingerprint(Buffer.from(data.content, "base64"));
-    if (previousRecord && previousRecord.sourceSha256 !== currentFingerprint) deleteRecord(doc, savedPath);
-    doc.assets[savedPath] = { ...previousRecord, sourceSha256: currentFingerprint, sourceGitSha: source!.sha!, classification: operation.classification, derivedFrom: operation.derivedFrom || undefined };
+    doc.assets[savedPath] = { ...previousRecord, sourceSha256: currentFingerprint, sourceGitSha: source!.sha!, classification: operation.classification };
   } else if (operation.action === "save") {
     if (operation.sha && recordRevision(doc.assets[savedPath]) !== operation.revision) throw createHttpError("AI classification has changed. Refresh and retry before replacing the image.", 409);
     if (!operation.sha && (source || Object.hasOwn(doc.assets, savedPath))) {
@@ -138,8 +104,8 @@ export async function mutateMediaMetadata(options: Options, operation: Operation
     if (!["generated", "modified", "unmarked"].includes(classification)) throw createHttpError("Invalid AI classification.", 400);
     if (!isLabelable(savedPath) && classification !== "unmarked") throw createHttpError("AI labels support static JPEG, PNG, WebP and AVIF only.", 400);
     const previousRecord = doc.assets[savedPath];
-    if (operation.sha) deleteRecord(doc, savedPath); // Existing crops belong to the old bytes.
-    if (isLabelable(savedPath)) doc.assets[savedPath] = { ...previousRecord, sourceSha256: fingerprint(Buffer.from(operation.content, "base64")), sourceGitSha: savedSha, classification, derivedFrom: undefined };
+    if (operation.sha && !isLabelable(savedPath)) deleteRecord(doc, savedPath);
+    if (isLabelable(savedPath)) doc.assets[savedPath] = { ...previousRecord, sourceSha256: fingerprint(Buffer.from(operation.content, "base64")), sourceGitSha: savedSha, classification };
   } else if (operation.action === "rename") {
     assertRepositoryPath(operation.newPath);
     if (entries.has(operation.newPath) || operation.newPath === metadataPath) throw createHttpError("Destination already exists.", 409);

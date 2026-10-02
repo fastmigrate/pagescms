@@ -47,7 +47,7 @@ export type FileSaveData = {
 };
 
 export type MediaItem = {
-  ai?: { classification: "generated" | "modified" | "unmarked"; record?: { classification?: "generated" | "modified" | "unmarked"; derivedFrom?: string }; revision: string; stale: boolean };
+  ai?: { classification: "generated" | "modified" | "unmarked"; record?: { classification: "generated" | "modified" | "unmarked" }; revision: string; stale: boolean };
   type: "dir" | "file";
   sha?: string;
   name: string;

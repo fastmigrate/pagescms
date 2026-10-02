@@ -171,19 +171,21 @@ for a release.
 FM-010 adds optional root `mediaMetadata: website/src/data/media-metadata.json`.
 One version-1 JSON document stores repository-relative asset records with
 classification (`generated`, `modified`, `unmarked`), source SHA-256 and Git blob
-SHA, and optional `derivedFrom`. Missing records are unmarked. Content image
-fields retain their string paths. The native media tile/picker offers a shared
+SHA. Each uploaded original has an explicit classification; generated website
+sizes, crops and formats need no additional records. Manual variant relationships
+are unsupported. Missing records are unmarked. Content image fields retain
+their string paths. The native media tile/picker offers a shared
 classification dialog and upload classification selector for static JPEG, PNG,
 WebP and AVIF. GIF/SVG labeling is explicitly unsupported.
 
 Classification, labeled uploads, replacement, rename and delete use fresh Git
 refs and one base-tree commit for image plus metadata. Non-forced ref updates
 reject concurrent edits. Existing record revisions and source blob SHAs reject
-stale clients. Renames update derivative links; deletion materializes descendants'
-effective classification before unlinking. Unknown metadata keys are preserved.
-Replacing bytes resets inherited classification unless a new explicit label is
-selected. Media listings attach metadata in one repository read, independent of
-which overlapping media source opened the asset. Original private media URLs
+stale clients. Rename moves only the selected original record; deletion removes
+only that record. Unknown metadata keys are preserved. Replacing bytes defaults
+to unmarked unless a new explicit classification is selected. Unrelated originals
+retain their own classifications. Media listings attach metadata in one
+repository read, independent of which overlapping media source opened the asset. Original private media URLs
 continue using the existing authorized thumbnail path.
 
 Development fixture: `/dev/fixtures/media-ai` with the production dialog and

@@ -32,6 +32,11 @@ test('actual AI route rejects origin, malformed JSON, sibling/traversal and abse
  for(const [req,context,status] of [[f.request({},'https://evil.test'),f.context(),403],[f.request('{'),f.context(),400],[f.request(),f.context('media-other/a.jpg'),400],[f.request(),f.context('media/../a.jpg'),400],[f.request({classification:'generated'}),f.context(),400]] as const){assert.equal((await f.post(req,context)).status,status);}
  assert.equal(f.writes,0);
 });
+test('actual AI route rejects missing/invalid classifications and manual variants before writes', async()=>{
+ for(const selection of [{}, {classification:'invalid'}, {derivedFrom:'media/source.jpg'}, {classification:'generated',derivedFrom:'media/source.jpg'}, {classification:'generated',derivedFrom:null}]) {
+  const f=routeFixture();assert.equal((await f.post(f.request({sha:'a'.repeat(40),revision:'b'.repeat(64),...selection}),f.context())).status,400);assert.equal(f.writes,0);
+ }
+});
 test('actual AI route authorizes private repository and saves a valid request',async()=>{const f=routeFixture();assert.equal((await f.post(f.request(),f.context())).status,200);assert.equal(f.writes,1);});
 
 test('actual library route reports unverifiable and stale classifications without trusting cached file SHAs', async () => {
