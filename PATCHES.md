@@ -187,6 +187,11 @@ to unmarked unless a new explicit classification is selected. Unrelated original
 retain their own classifications. Media listings attach metadata in one
 repository read, independent of which overlapping media source opened the asset. Original private media URLs
 continue using the existing authorized thumbnail path.
+Listings return source blob SHAs from the same fresh snapshot used for provenance
+checks, allowing editors to reclassify external replacements despite a stale
+folder cache. Returned sources with matching fingerprints remain trusted in a
+truncated tree; omitted, changed or unverifiable sources still require review.
+Atomic writes continue to reject truncated trees.
 
 Development fixture: `/dev/fixtures/media-ai` with the production dialog and
 an injected save boundary. The extension stays opt-in and must not be enabled

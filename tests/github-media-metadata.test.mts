@@ -4,14 +4,14 @@ import ts from 'typescript';
 import {readFileSync} from 'node:fs';
 import * as metadata from '../lib/media-metadata.ts';
 const sourceSha = 'a'.repeat(40);
-function fixture({ conflict = false, large = false, truncated = false } = {}) {
+function fixture({ conflict = false, large = false, truncated = false, omittedSource = false } = {}) {
   const document = {version: 1, assets: {'media/source.jpg': {classification: 'generated', sourceSha256: metadata.fingerprint('image'), sourceGitSha: sourceSha, future: null}, 'media/crop.webp': {classification: 'modified', sourceSha256: metadata.fingerprint('crop'), sourceGitSha: 'b'.repeat(40)}}, unknown: {nested: [null, '']}};
   let updated = false; let written: any; let delta: any;
   const entries = [{path: 'media/source.jpg', sha: sourceSha, type: 'blob', mode: '100644', size: 5}, {path: 'media/crop.webp', sha: 'b'.repeat(40), type: 'blob', mode: '100644'}, {path: 'data/media.json', sha: 'c'.repeat(40), type: 'blob', mode: '100644'}];
   const octokit = {rest: {repos: {getContent: async () => ({data:{type:"file",sha:"c".repeat(40),size:large ? 1_100_000 : 100,content:large ? "" : Buffer.from(JSON.stringify(document)).toString("base64")}})},git: {
     getRef: async () => ({data: {object: {sha: 'head'}}}),
     getCommit: async () => ({data: {tree: {sha: 'base'}}}),
-    getTree: async () => ({data: {tree: entries, truncated}}),
+    getTree: async () => ({data: {tree: omittedSource ? entries.filter(entry => entry.path !== 'media/source.jpg') : entries, truncated}}),
     getBlob: async ({file_sha}: any) => ({data: {content: Buffer.from(file_sha === 'c'.repeat(40) ? JSON.stringify(document) : 'image').toString('base64')}}),
     createBlob: async ({content, encoding}: any) => { if (encoding === 'utf-8') written = JSON.parse(content); return {data: {sha: 'd'.repeat(40)}}; },
     createTree: async (value: any) => {delta = value; return {data: {sha: 'new-tree'}};},
@@ -93,8 +93,13 @@ test('listing trust checks each original independently against fresh Git fingerp
  assert.equal((await f.status()).stale.get('media/source.jpg'),true);assert.equal((await f.status()).stale.get('media/crop.webp'),false);
 });
 
-test('truncated Git listings cannot certify unchanged source provenance', async () => {
- const f=fixture({truncated:true});assert.equal((await f.status()).stale.get('media/source.jpg'),true);
+test('truncated Git listings trust matching returned sources but not omitted or changed sources', async () => {
+ const f=fixture({truncated:true});
+ const matching=await f.status();assert.equal(matching.stale.get('media/source.jpg'),false);assert.equal(matching.stale.get('media/crop.webp'),false);
+ f.document.assets['media/source.jpg'].sourceGitSha='e'.repeat(40);
+ assert.equal((await f.status()).stale.get('media/source.jpg'),true);
+ const omitted=await fixture({truncated:true,omittedSource:true}).status();
+ assert.equal(omitted.stale.get('media/source.jpg'),true);assert.equal(omitted.stale.get('media/crop.webp'),false);
 });
 
 test('deleting an original preserves unrelated records and unknown fields', async () => {

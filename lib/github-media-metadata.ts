@@ -41,9 +41,9 @@ export async function readMediaMetadataStatus(token: string, ref: Ref, metadataP
   const sources = new Map(tree.tree.filter(entry => entry.type === 'blob' && entry.mode !== '120000').map(entry => [entry.path!, entry.sha]));
   const stale = new Map<string, boolean>();
   for (const [path, record] of Object.entries(metadata.assets)) {
-    stale.set(path, !!tree.truncated || !record.sourceGitSha || sources.get(path) !== record.sourceGitSha);
+    stale.set(path, !record.sourceGitSha || sources.get(path) !== record.sourceGitSha);
   }
-  return {metadata, stale};
+  return {metadata, stale, sources};
 }
 
 export async function mutateMediaMetadata(options: Options, operation: Operation) {

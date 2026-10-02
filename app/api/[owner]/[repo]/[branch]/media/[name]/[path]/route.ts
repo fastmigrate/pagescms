@@ -72,9 +72,9 @@ export async function GET(
       status: "success",
       data: results.map((item: any) => {
         return {
-          ai: metadata && item.type === "file" ? { classification: effectiveClassification(metadata, item.path), record: metadata.assets[item.path], revision: recordRevision(metadata.assets[item.path]), stale: !!snapshot?.stale.get(item.path) || (!!metadata.assets[item.path] && metadata.assets[item.path].sourceGitSha !== item.sha) } : undefined,
+          ai: metadata && item.type === "file" ? { classification: effectiveClassification(metadata, item.path), record: metadata.assets[item.path], revision: recordRevision(metadata.assets[item.path]), stale: !!snapshot?.stale.get(item.path) } : undefined,
           type: item.type,
-          sha: item.sha,
+          sha: item.type === "file" ? snapshot?.sources.get(item.path) ?? item.sha : item.sha,
           name: item.name,
           path: item.path,
           extension: item.type === "dir" ? undefined : getFileExtension(item.name),
