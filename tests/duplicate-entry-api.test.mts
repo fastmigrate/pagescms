@@ -163,7 +163,7 @@ test("the file API duplicates raw saved content through the normal create path",
       sanitizeObject,
     },
     "@/lib/config-store": {
-      getConfig: async () => ({ object: { content: [schema] } }),
+      getConfig: async () => ({ sha: "config-current", object: { content: [schema] } }),
       updateConfig: async () => {},
     },
     "@/lib/utils/file": {
@@ -208,6 +208,13 @@ test("the file API duplicates raw saved content through the normal create path",
     "@/lib/duplicate-entry": duplicateEntry,
   };
 
+  const revisionModule = { exports: {} as any };
+  new Function("require", "module", "exports", ts.transpileModule(
+    readFileSync(new URL("../lib/config-revision.ts", import.meta.url), "utf8"),
+    { compilerOptions: { module: ts.ModuleKind.CommonJS } },
+  ).outputText)((id: string) => mocks[id], revisionModule, revisionModule.exports);
+  mocks["@/lib/config-revision"] = revisionModule.exports;
+
   const source = readFileSync(
     new URL("../app/api/[owner]/[repo]/[branch]/files/[path]/route.ts", import.meta.url),
     "utf8",
@@ -227,6 +234,7 @@ test("the file API duplicates raw saved content through the normal create path",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       type: "content",
+      configSha: "config-current",
       name: "jobs",
       duplicate: { value: "Copy" },
     }),
@@ -259,6 +267,7 @@ test("the file API duplicates raw saved content through the normal create path",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       type: "content",
+      configSha: "config-current",
       name: "jobs",
       duplicate: { value: "Copy" },
     }),
@@ -286,6 +295,7 @@ test("the file API duplicates raw saved content through the normal create path",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         type: "content",
+      configSha: "config-current",
         name: "jobs",
         duplicate: { value: "Copy" },
         onConflict: "error",
@@ -312,6 +322,7 @@ test("the file API duplicates raw saved content through the normal create path",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         type: "content",
+      configSha: "config-current",
         name: "jobs",
         duplicate: { value: "Copy" },
         onConflict: "error",
@@ -339,6 +350,7 @@ test("the file API duplicates raw saved content through the normal create path",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         type: "content",
+      configSha: "config-current",
         name: "jobs",
         duplicate: { value: "Copy" },
         onConflict: "error",

@@ -30,6 +30,7 @@ export function EntryDuplicate({
   path,
   schema,
   disabled,
+  configSha,
   duplicateEntry,
   onDuplicated,
 }: {
@@ -40,6 +41,7 @@ export function EntryDuplicate({
   path: string;
   schema: Record<string, any>;
   disabled?: boolean;
+  configSha?: string;
   duplicateEntry?: (value: string) => Promise<ApiSuccess<EntryData>>;
   onDuplicated?: (response: ApiSuccess<EntryData>) => void;
 }) {
@@ -86,6 +88,7 @@ export function EntryDuplicate({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             type: "content",
+            configSha,
             name,
             duplicate: { value: trimmedValue },
             onConflict: "error",

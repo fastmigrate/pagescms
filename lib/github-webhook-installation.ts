@@ -1,6 +1,6 @@
 import { db } from "@/db";
-import { cacheFileTable, collaboratorTable, githubInstallationTokenTable } from "@/db/schema";
-import { and, eq, inArray } from "drizzle-orm";
+import { cacheFileTable, configTable, collaboratorTable, githubInstallationTokenTable } from "@/db/schema";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { clearFileCache, updateFileCacheOwner, updateFileCacheRepository } from "@/lib/github-cache-file";
 import { deleteCacheFileMeta, deleteCacheFileMetaByPaths } from "@/lib/github-cache-meta";
 
@@ -185,6 +185,7 @@ const handleInstallationWebhookEvent = async (event: string | null, data: any) =
         return true;
       }
 
+    case "create":
     case "delete":
       if (data.ref_type !== "branch") return false;
 
@@ -198,6 +199,11 @@ const handleInstallationWebhookEvent = async (event: string | null, data: any) =
           return true;
         }
 
+        await db.delete(configTable).where(and(
+          sql`lower(${configTable.owner}) = lower(${deleteOwner})`,
+          sql`lower(${configTable.repo}) = lower(${deleteRepo})`,
+          eq(configTable.branch, deleteBranch),
+        ));
         await clearFileCache(deleteOwner, deleteRepo, deleteBranch);
         await deleteCacheFileMeta(deleteOwner, deleteRepo, deleteBranch);
         return true;

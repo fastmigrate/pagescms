@@ -19,7 +19,7 @@ type RepoReadContext = {
   config: Config;
 };
 
-const getRepoReadContext = async ({ owner, repo, branch }: RepoRef): Promise<RepoReadContext> => {
+const getRepoReadContext = async ({ owner, repo, branch }: RepoRef, options?: { ttlMs?: number }): Promise<RepoReadContext> => {
   const sessionResult = await requireApiUserSession();
   if ("response" in sessionResult) {
     throw createHttpError("Not signed in.", sessionResult.response?.status ?? 401);
@@ -36,6 +36,8 @@ const getRepoReadContext = async ({ owner, repo, branch }: RepoRef): Promise<Rep
   }
 
   const config = await getConfig(owner, repo, branch, {
+    sync: true,
+    ...options,
     getToken: async () => token,
   });
   if (!config) throw createHttpError(`Configuration not found for ${owner}/${repo}/${branch}.`, 404);

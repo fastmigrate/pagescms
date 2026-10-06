@@ -24,6 +24,7 @@ import {
   normalizePath
 } from "@/lib/utils/file";
 import type { ApiSuccess, EntryData, EntryHistoryItem } from "@/types/api";
+import { ConfigurationNotice } from "./configuration-notice";
 import { EntryForm } from "./entry-form";
 import { EntryDuplicate } from "./entry-duplicate";
 import { EntryHistoryDropdown } from "./entry-history";
@@ -87,6 +88,7 @@ export function Entry({
   title,
   headerMeta,
   onSave,
+  request = fetch,
 }: {
   name?: string;
   path?: string;
@@ -94,6 +96,7 @@ export function Entry({
   title?: string;
   headerMeta?: ReactNode;
   onSave?: (data: Record<string, unknown>) => void;
+  request?: typeof fetch;
 }) {
   const [path, setPath] = useState<string | undefined>(initialPath);
   const [entry, setEntry] = useState<EntryData | null>();
@@ -111,11 +114,14 @@ export function Entry({
   const [hasRegisteredChanges, setHasRegisteredChanges] = useState(false);
   const [error, setError] = useState<string | undefined | null>(null);
   const changeVersionRef = useRef(0);
+  const editsRef = useRef(false);
+  useEffect(() => { editsRef.current = isFormDirty || hasRegisteredChanges; }, [isFormDirty, hasRegisteredChanges]);
   const { mutate } = useSWRConfig();
 
   const router = useRouter();
   
-  const { config } = useConfig();
+  const { config, pendingConfig, setUpdateBlocked, refreshConfig } = useConfig();
+  const draftRef = useRef<(() => Promise<Record<string, unknown>>) | null>(null);
   if (!config) throw new Error(`Configuration not found.`);
   
   const schema = useMemo(() => {
@@ -207,18 +213,19 @@ export function Entry({
 
   const entryApiUrl = useMemo(() => (
     path
-      ? `/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/entries/${encodeURIComponent(path)}?name=${encodeURIComponent(name)}`
+      ? `/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/entries/${encodeURIComponent(path)}?name=${encodeURIComponent(name)}&configSha=${encodeURIComponent(config.sha)}`
       : null
-  ), [config.branch, config.owner, config.repo, name, path]);
+  ), [config.branch, config.owner, config.repo, config.sha, name, path]);
 
   const fetchEntryByUrl = useCallback(async (apiUrl: string): Promise<EntryData> => {
-    const response = await fetch(apiUrl);
+    const response = await request(apiUrl);
+    if (response.status === 409) void refreshConfig();
     const data = await requireApiSuccess<any>(
       response,
       "Failed to fetch entry",
     );
     return data.data as EntryData;
-  }, []);
+  }, [refreshConfig, request]);
 
   const {
     data: swrEntryData,
@@ -241,7 +248,7 @@ export function Entry({
   }, [path, swrEntryLoading]);
 
   useEffect(() => {
-    if (!swrEntryData || !path) return;
+    if (!swrEntryData || !path || editsRef.current) return;
     setEntry(swrEntryData);
     setSha(swrEntryData.sha);
     setHasRegisteredChanges(false);
@@ -284,13 +291,13 @@ export function Entry({
   );
 
   const fetchEntryHistory = useCallback(async ([apiUrl]: readonly [string, string]): Promise<EntryHistoryItem[]> => {
-    const response = await fetch(apiUrl);
+    const response = await request(apiUrl);
     const data = await requireApiSuccess<any>(
       response,
       "Failed to fetch entry's history",
     );
     return data.data as EntryHistoryItem[];
-  }, []);
+  }, [request]);
 
   const { data: historyData } = useSWR<EntryHistoryItem[]>(
     historyKey,
@@ -311,6 +318,7 @@ export function Entry({
     && filenameValue.trim() !== currentFilename;
 
   const onSubmit = async (contentObject: Record<string, unknown>) => {
+    if (pendingConfig) { toast.error("Configuration changed. Download your draft and load the updated fields before saving."); return; }
     setIsSaving(true);
     const submitStartChangeVersion = changeVersionRef.current;
 
@@ -343,12 +351,13 @@ export function Entry({
           && schemaType === "collection"
         ) {
           const newPath = joinPathSegments([getParentPath(savePath), normalizedFilename]);
-          const renameResponse = await fetch(
+          const renameResponse = await request(
             `/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/files/${encodeURIComponent(savePath)}/rename`,
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
+                configSha: config.sha,
                 type: "content",
                 name,
                 newPath,
@@ -365,10 +374,11 @@ export function Entry({
           void mutate((key) => typeof key === "string" && key.startsWith(collectionKeyPrefix));
         }
 
-        const response = await fetch(`/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/files/${encodeURIComponent(savePath)}`, {
+        const response = await request(`/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/files/${encodeURIComponent(savePath)}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            configSha: config.sha,
             type: path === ".pages.yml" ? "settings" : "content",
             name,
             content: schema?.list === true
@@ -377,6 +387,7 @@ export function Entry({
             sha: sha
           }),
         });
+        if (response.status === 409) void refreshConfig();
         const data = await requireApiSuccess<any>(
           response,
           "Failed to save file",
@@ -384,7 +395,10 @@ export function Entry({
         
         if (data.data.sha !== sha) setSha(data.data.sha);
         if (submitStartChangeVersion === changeVersionRef.current) {
+          editsRef.current = false;
+          setIsFormDirty(false);
           setHasRegisteredChanges(false);
+          setEntry({ ...data.data, contentObject: schema?.list === true ? contentObject.listWrapper : contentObject });
         }
 
         if (!path && schemaType === "collection") router.push(`/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/collection/${encodeURIComponent(name)}/edit/${encodeURIComponent(data.data.path)}`);
@@ -425,6 +439,15 @@ export function Entry({
   };
 
   const isBusy = isLoading || isSaving;
+  const configUpdateBlocked = isSaving || isFormDirty || hasRegisteredChanges || filenameChanged;
+  useEffect(() => {
+    setUpdateBlocked(configUpdateBlocked);
+  }, [configUpdateBlocked, setUpdateBlocked]);
+  useEffect(() => () => setUpdateBlocked(false), [setUpdateBlocked]);
+  const handleDirtyChange = useCallback((dirty: boolean) => {
+    setIsFormDirty(dirty);
+    if (dirty) { editsRef.current = true; setUpdateBlocked(true); }
+  }, [setUpdateBlocked]);
 
   useEffect(() => {
     const handleSaveShortcut = (event: KeyboardEvent) => {
@@ -688,6 +711,7 @@ export function Entry({
               name={name}
               path={path}
               schema={schema}
+              configSha={config.sha}
               disabled={isBusy}
             />
           )}
@@ -695,7 +719,7 @@ export function Entry({
             type="submit"
             form="entry-form"
             disabled={
-              isBusy ||
+              isBusy || Boolean(pendingConfig) ||
               (showFilenameField && filenameValue.trim().length === 0) ||
               (
                 Boolean(path) &&
@@ -742,7 +766,7 @@ export function Entry({
         </div>
       )}
     </div>
-  ), [breadcrumbNode, canDelete, canRename, config.branch, config.owner, config.repo, filenameChanged, filenameFieldMode, filenameValue, handleDelete, handleRename, hasRegisteredChanges, headerActionsNode, headerMeta, historyData, isBusy, isFilenameUnlocked, isFormDirty, isLoading, name, operations.duplicate, path, schema, schemaType, sha, showFilenameField, showHeaderActions]);
+  ), [breadcrumbNode, canDelete, canRename, config.branch, config.owner, config.repo, config.sha, filenameChanged, filenameFieldMode, filenameValue, handleDelete, handleRename, hasRegisteredChanges, headerActionsNode, headerMeta, historyData, isBusy, isFilenameUnlocked, isFormDirty, isLoading, name, operations.duplicate, path, pendingConfig, schema, schemaType, sha, showFilenameField, showHeaderActions]);
 
   useRepoHeader({ header: headerNode });
 
@@ -853,6 +877,7 @@ export function Entry({
     isLoading
       ? loadingSkeleton
       : <EntryForm
+        key={`${config.sha}/${path ?? "new"}`}
         fields={entryFields}
         contentObject={entryContentObject}
         onSubmit={onSubmit}
@@ -891,10 +916,21 @@ export function Entry({
               </InputGroup>
             : undefined
         }
-        onDirtyChange={setIsFormDirty}
+        draftRef={draftRef}
+        notice={<ConfigurationNotice filename={getFileName(path || "new-entry")} disabled={isSaving} onUpdate={() => {
+          editsRef.current = false;
+          setIsFormDirty(false);
+          setHasRegisteredChanges(false);
+        }} getDraft={async () => ({
+          ...(await draftRef.current?.() ?? {}),
+          ...(showFilenameField ? { _filename: filenameValue } : {}),
+        })} />}
+        onDirtyChange={handleDirtyChange}
         onChangeRegistered={() => {
+          editsRef.current = true;
           changeVersionRef.current += 1;
           setHasRegisteredChanges(true);
+          setUpdateBlocked(true);
         }}
       />
   );

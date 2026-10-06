@@ -3,6 +3,7 @@ const webhookEvents = [
   "repository",
   "push",
   "delete",
+  "create",
   "check_run",
   "check_suite",
   "status",

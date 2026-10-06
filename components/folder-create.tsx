@@ -64,6 +64,7 @@ const FolderCreate = ({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          configSha: config.sha,
           type,
           name,
           content: "",
@@ -72,7 +73,7 @@ const FolderCreate = ({
       }).then(async (response) => {
         const payload = await response.json().catch(() => null);
         if (!response.ok) {
-          if (response.status === 409) {
+          if (response.status === 409 && !payload?.message?.startsWith("Configuration changed")) {
             throw new Error(`Folder \"${fullNewPath}\" already exists.`);
           }
 

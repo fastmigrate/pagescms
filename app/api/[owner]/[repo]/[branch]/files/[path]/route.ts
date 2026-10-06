@@ -8,6 +8,7 @@ import { readFns, writeFns } from "@/fields/registry";
 import { configVersion, parseConfig, normalizeConfig } from "@/lib/config";
 import { stringify, parse } from "@/lib/serialization";
 import { deepMap, generateFilename, generateZodSchema, getPrimaryField, getSchemaByName, sanitizeObject } from "@/lib/schema";
+import { assertConfigRevision } from "@/lib/config-revision";
 import { getConfig, updateConfig } from "@/lib/config-store";
 import { getFileExtension, getFileName, normalizePath, serializedTypes, getParentPath, joinPathSegments } from "@/lib/utils/file";
 import { assertGithubIdentity } from "@/lib/authz-shared";
@@ -45,6 +46,8 @@ export async function POST(
     let normalizedPath = normalizePath(params.path);
 
     const config = await getConfig(params.owner, params.repo, params.branch, {
+      sync: true,
+      ttlMs: 0,
       getToken: async () => token,
     });
     if (!config && normalizedPath !== ".pages.yml") throw new Error(`Configuration not found for ${params.owner}/${params.repo}/${params.branch}.`);
@@ -65,6 +68,7 @@ export async function POST(
 
     switch (data.type) {
       case "content":
+        assertConfigRevision(data.configSha, config?.sha);
         if (!data.name) throw new Error(`"name" is required for content.`);
 
         schema = getSchemaByName(config?.object, data.name);

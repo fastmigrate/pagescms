@@ -4,6 +4,7 @@ import { assertFileWriteOrigin, readFileRequest } from "@/lib/upload-limits";
 import { createOctokitInstance } from "@/lib/utils/octokit";
 import { isContentOperationAllowed } from "@/lib/operations";
 import { getSchemaByName } from "@/lib/schema";
+import { assertConfigRevision } from "@/lib/config-revision";
 import { getConfig } from "@/lib/config-store";
 import { getFileExtension, normalizePath } from "@/lib/utils/file";
 import { getToken } from "@/lib/token";
@@ -40,6 +41,8 @@ export async function POST(
     }
 
     const config = await getConfig(params.owner, params.repo, params.branch, {
+      sync: true,
+      ttlMs: 0,
       getToken: async () => token,
     });
     if (!config) throw new Error(`Configuration not found for ${params.owner}/${params.repo}/${params.branch}.`);
@@ -61,6 +64,7 @@ export async function POST(
 
     switch (data.type) {
       case "content":
+        assertConfigRevision(data.configSha, config.sha);
         if (!data.name) throw new Error(`"name" is required for content.`);
 
         schema = getSchemaByName(config.object, data.name);

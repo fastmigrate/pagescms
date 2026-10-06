@@ -47,6 +47,8 @@ export default async function Layout({
       repo,
       decodedBranch,
       {
+        sync: true,
+        ttlMs: 0,
         getToken: async () => token,
       },
     );
@@ -94,7 +96,7 @@ export default async function Layout({
   }
 
   return (
-    <ConfigProvider value={config}>
+    <ConfigProvider key={`${config.owner}/${config.repo}/${config.branch}`} value={config}>
       <RepoLayout>{errorMessage ? errorMessage : children}</RepoLayout>
     </ConfigProvider>
   );
