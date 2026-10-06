@@ -238,3 +238,11 @@ and the development fixture at `/dev/fixtures/configuration`. Run the isolated
 browser check with `node scripts/check-configuration-fixture.mjs` against the
 fixture server. It requires Playwright, or a `PLAYWRIGHT_MODULE` path to an
 existing installation. `AFTER_IMAGE` optionally records the selected PR image.
+
+## Dependency security refresh — 2026-10-06
+
+FM-002 refreshes the lockfile to Sharp 0.35.5 and source-map-js 1.2.2 to remove
+the two high-severity findings that blocked the configuration release audit.
+The compatible Drizzle Kit patch is 0.31.11. Its existing moderate development
+loader advisories retain the previously accepted boundary. No forced downgrade
+or major dependency update is included.
