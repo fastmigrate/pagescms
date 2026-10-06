@@ -36,31 +36,38 @@ function FixtureHeader() {
   return <div>{useRepoHeaderState().header}</div>;
 }
 export function ConfigurationFixture() {
-  const [latest, setLatest] = useState(oldConfig);
+  const [latest, setLatest] = useState<Config | null>(oldConfig);
+  const checkFailure = useRef(false);
   const [fullEditor, setFullEditor] = useState(false);
   const savedRef = useRef(savedContent);
   const [saveCount, setSaveCount] = useState(0);
   const latestRef = useRef(latest);
 
-  const loadConfig = useCallback(async () => latestRef.current, []);
+  const loadConfig = useCallback(async () => {
+    if (checkFailure.current) throw new Error("Fixture check failed");
+    return latestRef.current;
+  }, []);
   const request = useCallback<typeof fetch>(async (input, init) => {
     const url = new URL(String(input), "http://fixture.local");
     if (init?.method === "POST") {
       const body = JSON.parse(String(init.body));
-      if (body.configSha !== latestRef.current.sha) return Response.json({ status: "error", message: "Configuration changed. Your draft is kept." }, { status: 409 });
+      if (body.configSha !== latestRef.current?.sha) return Response.json({ status: "error", message: "Configuration changed. Your draft is kept." }, { status: 409 });
       setSaveCount((count) => count + 1);
       savedRef.current = body.content;
       return Response.json({ status: "success", message: "Saved fixture", data: { sha: "saved-file", path: "content/page.json" } });
     }
     if (url.pathname.endsWith("/history")) return Response.json({ status: "success", data: [] });
+    if (url.searchParams.get("configSha") !== latestRef.current?.sha) return Response.json({ status: "error", message: "Configuration changed. Your draft is kept." }, { status: 409 });
     return Response.json({ status: "success", data: { sha: "file", path: "content/page.json", contentObject: savedRef.current } });
   }, []);
   return <main className="mx-auto max-w-3xl p-8 space-y-6">
     <h1 className="text-2xl font-semibold">CMS configuration update</h1>
     <p>The production provider and form use isolated configuration and saved content.</p>
     <Button onClick={() => { latestRef.current = newConfig; setLatest(newConfig); }}>Publish SEO title configuration</Button>
+    <Button onClick={() => { latestRef.current = null; setLatest(null); }}>Remove configuration</Button>
+    <Button onClick={() => { checkFailure.current = !checkFailure.current; }}>Toggle check failure</Button>
     <Button onClick={() => setFullEditor(true)}>Use full entry editor</Button>
-    <p>Repository configuration: {latest.sha}</p>
+    <p>Repository configuration: {latest?.sha ?? "missing"}</p>
     <p>Successful saves: {saveCount}</p>
     <ConfigProvider value={oldConfig} loadConfig={loadConfig}><RepoHeaderProvider>{fullEditor ? <><FixtureHeader /><Entry name="articles" path="content/page.json" request={request} /></> : <FixtureEditor />}</RepoHeaderProvider></ConfigProvider>
   </main>;

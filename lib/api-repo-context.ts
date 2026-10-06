@@ -40,7 +40,7 @@ const getRepoReadContext = async ({ owner, repo, branch }: RepoRef, options?: { 
     ...options,
     getToken: async () => token,
   });
-  if (!config) throw createHttpError(`Configuration not found for ${owner}/${repo}/${branch}.`, 404);
+  if (!config) throw Object.assign(createHttpError(`Configuration not found for ${owner}/${repo}/${branch}.`, 404), { code: "CONFIG_NOT_FOUND" });
 
   return { user, token, config };
 };

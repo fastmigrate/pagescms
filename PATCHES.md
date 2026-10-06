@@ -219,7 +219,12 @@ The client checks visible tabs every 60 seconds and on navigation, focus and
 reconnection. Clean editors apply new configuration automatically. Dirty or
 saving editors retain their active schema and values. The update action downloads
 the current draft as JSON before loading the new fields. Entry background reads
-must not reset a dirty draft. Content creates, updates, duplicates and renames
+must not reset a dirty draft or hide it after a revision-conflict response.
+A confirmed missing configuration clears a clean editor. Dirty editors retain
+the draft-download action before clearing the removed configuration. Transient
+check failures keep the active editor and offer a retry. Configuration setup
+remains available with an empty schema after removal.
+Content creates, updates, duplicates and renames
 send the active configuration SHA. The server rejects missing or obsolete
 revisions with HTTP 409 before content transformation or GitHub writes.
 

@@ -81,6 +81,8 @@ type GroupTrailItem = {
   label?: string | null;
 };
 
+class ConfigurationConflictError extends Error {}
+
 export function Entry({
   name = "",
   path: initialPath,
@@ -219,7 +221,10 @@ export function Entry({
 
   const fetchEntryByUrl = useCallback(async (apiUrl: string): Promise<EntryData> => {
     const response = await request(apiUrl);
-    if (response.status === 409) void refreshConfig();
+    if (response.status === 409) {
+      void refreshConfig();
+      throw new ConfigurationConflictError("Configuration changed. Your edits are kept.");
+    }
     const data = await requireApiSuccess<any>(
       response,
       "Failed to fetch entry",
@@ -274,6 +279,11 @@ export function Entry({
 
   useEffect(() => {
     if (!swrEntryError) return;
+    if (swrEntryError instanceof ConfigurationConflictError) {
+      setIsLoading(false);
+      setError(null);
+      return;
+    }
     const message = swrEntryError instanceof Error ? swrEntryError.message : "Failed to fetch entry.";
     setError(message);
     setIsLoading(false);
@@ -318,7 +328,7 @@ export function Entry({
     && filenameValue.trim() !== currentFilename;
 
   const onSubmit = async (contentObject: Record<string, unknown>) => {
-    if (pendingConfig) { toast.error("Configuration changed. Download your draft and load the updated fields before saving."); return; }
+    if (pendingConfig !== undefined) { toast.error("Configuration changed. Download your draft and load the updated fields before saving."); return; }
     setIsSaving(true);
     const submitStartChangeVersion = changeVersionRef.current;
 
@@ -719,7 +729,7 @@ export function Entry({
             type="submit"
             form="entry-form"
             disabled={
-              isBusy || Boolean(pendingConfig) ||
+              isBusy || pendingConfig !== undefined ||
               (showFilenameField && filenameValue.trim().length === 0) ||
               (
                 Boolean(path) &&

@@ -9,6 +9,7 @@ const browser = await chromium.launch({ headless: true });
 try {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: true });
   const page = await context.newPage();
+  page.setDefaultTimeout(15_000);
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.clock.install();
@@ -41,7 +42,7 @@ try {
   await page.reload();
   await page.getByRole("button", { name: "Use full entry editor" }).click();
   await page.getByLabel("Title", { exact: true }).fill("Unsaved full editor draft");
-  await page.clock.runFor(3_000);
+  await page.clock.runFor(6_000);
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await page.clock.runFor(100);
   assert.equal(await page.getByLabel("Title", { exact: true }).inputValue(), "Unsaved full editor draft");
@@ -51,6 +52,56 @@ try {
   assert.equal(await page.getByLabel("Title", { exact: true }).inputValue(), "Unsaved full editor draft");
   await page.getByText("Successful saves: 0").waitFor();
   console.log("PASS: actual entry keeps drafts during background reads and rejected stale saves");
+
+  await page.reload();
+  await page.getByRole("button", { name: "Use full entry editor" }).click();
+  await page.getByLabel("Title", { exact: true }).fill("Draft kept after background conflict");
+  await page.getByRole("button", { name: "Publish SEO title configuration" }).click();
+  await page.clock.runFor(6_000);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await page.getByRole("button", { name: "Download draft and update fields" }).waitFor();
+  assert.equal(await page.getByText("Something went wrong", { exact: true }).count(), 0);
+  assert.equal(await page.getByLabel("Title", { exact: true }).inputValue(), "Draft kept after background conflict");
+  const conflictDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download draft and update fields" }).click();
+  const conflictDownload = await conflictDownloadPromise;
+  assert.equal(JSON.parse(await readFile(await conflictDownload.path(), "utf8")).title, "Draft kept after background conflict");
+  await page.getByLabel("SEO title", { exact: true }).waitFor();
+  console.log("PASS: revision-conflict background read keeps the dirty editor and draft control visible");
+
+  await page.reload();
+  await page.getByLabel("Title", { exact: true }).fill("Draft kept after configuration removal");
+  await page.getByRole("button", { name: "Remove configuration", exact: true }).click();
+  await page.getByRole("button", { name: "Check configuration", exact: true }).click();
+  await page.getByRole("button", { name: "Download draft and update fields" }).waitFor();
+  assert.equal(await page.getByLabel("Title", { exact: true }).inputValue(), "Draft kept after configuration removal");
+  const removalDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download draft and update fields" }).click();
+  const removalDownload = await removalDownloadPromise;
+  assert.equal(JSON.parse(await readFile(await removalDownload.path(), "utf8")).title, "Draft kept after configuration removal");
+  await page.getByRole("heading", { name: "Configuration not found", exact: true }).waitFor();
+  console.log("PASS: configuration removal retains dirty draft until export, then clears obsolete fields");
+
+  await page.reload();
+  await page.getByRole("button", { name: "Remove configuration", exact: true }).click();
+  await page.getByRole("button", { name: "Check configuration", exact: true }).click();
+  await page.getByRole("heading", { name: "Configuration not found", exact: true }).waitFor();
+  assert.equal(await page.getByLabel("Title", { exact: true }).count(), 0);
+  await page.getByRole("button", { name: "Publish SEO title configuration" }).click();
+  await page.getByRole("button", { name: "Check again", exact: true }).click();
+  await page.getByLabel("SEO title", { exact: true }).waitFor();
+  console.log("PASS: clean editor clears removed configuration and recovers when configuration returns");
+
+  await page.reload();
+  await page.getByLabel("Title", { exact: true }).fill("Draft during failed check");
+  await page.getByRole("button", { name: "Toggle check failure", exact: true }).click();
+  await page.getByRole("button", { name: "Check configuration", exact: true }).click();
+  await page.getByText("Configuration check failed. Your edits are kept.", { exact: false }).waitFor();
+  assert.equal(await page.getByLabel("Title", { exact: true }).inputValue(), "Draft during failed check");
+  await page.getByRole("button", { name: "Toggle check failure", exact: true }).click();
+  await page.getByRole("button", { name: "Retry", exact: true }).click();
+  await page.getByText("Configuration check failed. Your edits are kept.", { exact: false }).waitFor({ state: "hidden" });
+  console.log("PASS: transient check failures retain the editor and recover on retry");
 
   await page.reload();
   await page.getByRole("button", { name: "Use full entry editor" }).click();

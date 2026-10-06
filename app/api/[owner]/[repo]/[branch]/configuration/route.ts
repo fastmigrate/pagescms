@@ -11,6 +11,11 @@ export async function GET(_request: Request, context: {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "CONFIG_NOT_FOUND") {
+      return Response.json({ status: "success", data: null }, {
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
     return toErrorResponse(error);
   }
 }

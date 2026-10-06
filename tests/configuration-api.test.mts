@@ -32,7 +32,8 @@ const params = { owner: "o", repo: "r", branch: "main", path: "content/page.json
 
 test("configuration API uses actual repository authorization and works with cache disabled", async () => {
   let signedIn = true; let permission = true; let checks = 0;
-  const config = { owner: "o", repo: "r", branch: "main", sha: "new", object: { settings: { cache: false } } };
+  let checkError: Error | null = null;
+  let config: any = { owner: "o", repo: "r", branch: "main", sha: "new", object: { settings: { cache: false } } };
   const load = loadFixture({
     "@/lib/session-server": { requireApiUserSession: async () => signedIn ? { user: { id: "u" } } : { response: Response.json({}, { status: 401 }) } },
     "@/lib/token": { getToken: async () => ({ token: "token", source: "user" }) },
@@ -41,7 +42,9 @@ test("configuration API uses actual repository authorization and works with cach
     "@/db/schema": { cachePermissionTable: {} },
     "@/lib/utils/octokit": { createOctokitInstance: () => ({ rest: { repos: { get: async () => ({ status: permission ? 200 : 403 }) } } }) },
     "@/lib/config-store": { getConfig: async (_owner: string, _repo: string, _branch: string, options: any) => {
-      assert.equal(options.sync, true); assert.equal(options.ttlMs, 0); checks++; return config;
+      assert.equal(options.sync, true); assert.equal(options.ttlMs, 0); checks++;
+      if (checkError) throw checkError;
+      return config;
     } },
   });
   const { GET } = load("app/api/[owner]/[repo]/[branch]/configuration/route.ts");
@@ -50,11 +53,21 @@ test("configuration API uses actual repository authorization and works with cach
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("Cache-Control"), "no-store");
   assert.deepEqual((await response.json()).data, config);
+  config = null;
+  const missing = await GET(new Request("https://cms.test"), context);
+  assert.equal(missing.status, 200);
+  assert.equal(missing.headers.get("Cache-Control"), "no-store");
+  assert.equal((await missing.json()).data, null);
+  checkError = Object.assign(new Error("Unrelated upstream not found"), { status: 404 });
+  assert.equal((await GET(new Request("https://cms.test"), context)).status, 404);
+  checkError = new Error("Transient upstream failure");
+  assert.equal((await GET(new Request("https://cms.test"), context)).status, 500);
+  checkError = null;
   permission = false;
   assert.equal((await GET(new Request("https://cms.test"), context)).status, 403);
   signedIn = false;
   assert.equal((await GET(new Request("https://cms.test"), context)).status, 401);
-  assert.equal(checks, 1);
+  assert.equal(checks, 4);
 });
 
 test("content saves and save-time renames reject old or missing configuration before GitHub writes", async () => {

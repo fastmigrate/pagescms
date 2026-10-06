@@ -10,7 +10,7 @@ export function ConfigurationNotice({ getDraft, filename, disabled = false, onUp
   onUpdate?: () => void;
 }) {
   const { pendingConfig, applyPendingConfig } = useConfig();
-  if (!pendingConfig) return null;
+  if (pendingConfig === undefined) return null;
   const update = async () => {
     let draft;
     try { draft = await getDraft(); } catch {
