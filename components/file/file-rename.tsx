@@ -59,6 +59,7 @@ export function FileRename({
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              configSha: config.sha,
               type: (type === "collection" || type === "file") ? "content" : type,
               name,
               sha,

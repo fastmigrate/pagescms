@@ -1034,12 +1034,16 @@ const EntryForm = ({
   filePath,
   onDirtyChange,
   onChangeRegistered,
+  draftRef,
+  notice,
 }: {
   fields: Field[];
   contentObject?: Record<string, unknown>;
   onSubmit: (values: Record<string, unknown>) => void;
   filePath?: React.ReactNode;
   onDirtyChange?: (isDirty: boolean) => void;
+  draftRef?: React.RefObject<(() => Promise<Record<string, unknown>>) | null>;
+  notice?: React.ReactNode;
   onChangeRegistered?: () => void;
 }) => {
   const zodSchema = useMemo(() => {
@@ -1137,6 +1141,15 @@ const EntryForm = ({
     }
   }, []);
 
+  useEffect(() => {
+    if (!draftRef) return;
+    draftRef.current = async () => {
+      await runBeforeValidationHooks();
+      return form.getValues();
+    };
+    return () => { draftRef.current = null; };
+  }, [draftRef, form, runBeforeValidationHooks]);
+
   const handleSubmit = useCallback(
     async (values: Record<string, unknown>) => {
       const latestValues = form.getValues() as Record<string, unknown>;
@@ -1165,6 +1178,7 @@ const EntryForm = ({
         onSubmit={handleFormSubmit}
         className="w-full max-w-screen-md mx-auto grid items-start gap-6"
       >
+        {notice}
         {filePath && (
           <div className="space-y-2 overflow-hidden">
             <FormLabel>Filename</FormLabel>

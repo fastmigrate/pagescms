@@ -110,12 +110,12 @@ const DEFAULT_CONFIG_CHECK_TTL_MS = parseInt(
   process.env.CONFIG_CHECK_MIN ||
     process.env.CFG_CHECK_MIN ||
     process.env.CONFIG_CHECK_TTL ||
-    "5",
+    "1",
   10,
 ) * 60 * 1000;
 
 const isConfigCheckDue = (lastCheckedAt?: Date, ttlMs = DEFAULT_CONFIG_CHECK_TTL_MS) => {
-  if (!lastCheckedAt) return true;
+  if (ttlMs <= 0 || !lastCheckedAt) return true;
   return Date.now() - new Date(lastCheckedAt).getTime() > ttlMs;
 };
 
@@ -148,6 +148,7 @@ const fetchConfigFromGithub = async (
 
     const configFile = Buffer.from(response.data.content, "base64").toString();
     const parsed = parseConfig(configFile);
+    if (parsed.errors.length) throw new Error(`Invalid .pages.yml: ${parsed.errors[0].message}`);
     const configObject = normalizeConfig(parsed.document.toJSON());
 
     return {
@@ -168,7 +169,7 @@ const getConfig = async (
   branch: string,
   options?: GetConfigOptions,
 ): Promise<Config | null> => {
-  const sync = options?.sync ?? false;
+  const sync = options?.sync ?? Boolean(options?.getToken);
   const getToken = options?.getToken;
   const bootstrapOnMiss = options?.bootstrapOnMiss ?? true;
   if (sync && !getToken) throw new Error("getToken is required when sync is enabled.");
@@ -177,7 +178,7 @@ const getConfig = async (
 
   const normalizedOwner = owner.toLowerCase();
   const normalizedRepo = repo.toLowerCase();
-  const key = getConfigSyncKey(normalizedOwner, normalizedRepo, branch);
+  const key = `${getConfigSyncKey(normalizedOwner, normalizedRepo, branch)}::${sync ? (options?.ttlMs === 0 ? "fresh" : "sync") : "cached"}`;
   const existing = configSyncInFlight.get(key);
   if (existing) return existing;
 

@@ -455,6 +455,7 @@ export function Collection({ name, path }: { name: string; path?: string }) {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
+                  configSha: config.sha,
                   type: "content",
                   name,
                   newPath: normalizedNewPath,
@@ -486,7 +487,7 @@ export function Collection({ name, path }: { name: string; path?: string }) {
         console.error(error);
       }
     },
-    [config.owner, config.repo, config.branch, name, router],
+    [config.owner, config.repo, config.branch, config.sha, name, router],
   );
 
   const columns = useMemo(() => {

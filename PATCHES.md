@@ -18,6 +18,8 @@ active FastMigrate release branch.
 | FM-010 | Candidate | AI media classification | Asset-level labels with atomic image/metadata writes and derivative inheritance. | Upstream supports the equivalent native asset provenance contract. |
 | FM-009 | Active | Downstream development loop | Exercise production client components locally, run an authenticated sandbox stack, and verify exact candidate commits on an isolated VM before merge. | Upstream provides equivalent fixture, sandbox, and immutable candidate-verification workflows. |
 
+| FM-007 | Active | Configuration freshness | Check repository configuration during normal reads, update open editors automatically, preserve dirty drafts and reject saves made with obsolete configuration. | Upstream provides equivalent configuration synchronization and draft-preservation behavior. |
+
 Each active patch must remain a separate commit, include proportionate tests,
 and avoid customer- or infrastructure-specific configuration.
 
@@ -204,3 +206,48 @@ to 10.0.13. Production audit has zero high or critical findings with the same
 CI threshold. The four existing moderate Drizzle Kit advisories remain.
 The production build, existing tests, TypeScript, and a delivery-free
 Nodemailer stream transport smoke validate the dependency boundary.
+
+## Configuration freshness
+
+Normal authenticated configuration reads check GitHub after a one-minute cache
+interval. Initial repository layouts, configuration polling and content writes
+force a synchronous check of `.pages.yml`. The configuration file SHA identifies
+the editor schema independently of the parser version. A missing file removes
+the cached schema; a failed check reports an error and does not overwrite it.
+
+The client checks visible tabs every 60 seconds and on navigation, focus and
+reconnection. Clean editors apply new configuration automatically. Dirty or
+saving editors retain their active schema and values. The update action downloads
+the current draft as JSON before loading the new fields. Entry background reads
+must not reset a dirty draft or hide it after a revision-conflict response.
+A confirmed missing configuration clears a clean editor. Dirty editors retain
+the draft-download action before clearing the removed configuration. Transient
+check failures keep the active editor and offer a retry. Configuration setup
+remains available with an empty schema after removal.
+Content creates, updates, duplicates and renames
+send the active configuration SHA. The server rejects missing or obsolete
+revisions with HTTP 409 before content transformation or GitHub writes.
+
+This is a check before each write, not an atomic transaction with concurrent
+external configuration commits. Existing GitHub file-conflict handling remains
+in force. No promise is made to merge arbitrary schema changes into unsaved
+content. Users keep the draft download for recovery in the updated form.
+
+Branch create/delete webhooks remove configuration, file and metadata entries.
+New App manifests subscribe to both events. Existing App subscriptions can keep
+their current event set: normal read checks also correct missed events and reused
+branch names without a webhook or the optional Cache dashboard.
+
+Run `node --test tests/config-store.test.mts tests/configuration-api.test.mts`
+and the development fixture at `/dev/fixtures/configuration`. Run the isolated
+browser check with `node scripts/check-configuration-fixture.mjs` against the
+fixture server. It requires Playwright, or a `PLAYWRIGHT_MODULE` path to an
+existing installation. `AFTER_IMAGE` optionally records the selected PR image.
+
+## Dependency security refresh — 2026-10-06
+
+FM-002 refreshes the lockfile to Sharp 0.35.5 and source-map-js 1.2.2 to remove
+the two high-severity findings that blocked the configuration release audit.
+The compatible Drizzle Kit patch is 0.31.11. Its existing moderate development
+loader advisories retain the previously accepted boundary. No forced downgrade
+or major dependency update is included.

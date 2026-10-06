@@ -3,6 +3,7 @@ import { createOctokitInstance } from "@/lib/utils/octokit";
 import { readFns } from "@/fields/registry";
 import { deepMap, getSchemaByName } from "@/lib/schema";
 import { parse } from "@/lib/serialization";
+import { assertConfigRevision } from "@/lib/config-revision";
 import { getConfig } from "@/lib/config-store";
 import { getFileExtension, normalizePath } from "@/lib/utils/file";
 import { assertGithubIdentity } from "@/lib/authz-shared";
@@ -69,8 +70,9 @@ export async function GET(
       config = await getConfig(params.owner, params.repo, params.branch, {
         getToken: async () => token,
       });
+      const expectedConfig = searchParams.get("configSha");
+      if (expectedConfig) assertConfigRevision(expectedConfig, config?.sha);
       if (!config) throw createHttpError(`Configuration not found for ${params.owner}/${params.repo}/${params.branch}.`, 404);
-
       schema = getSchemaByName(config.object, name);
       if (!schema) throw createHttpError(`Schema not found for ${name}.`, 404);
 
