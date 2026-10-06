@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import useSWR from "swr";
 import { requireApiSuccess } from "@/lib/api-client";
+import { isConfigurationPath } from "@/lib/config-path";
 import type { Config } from "@/types/config";
 
 interface ConfigContextType {
@@ -96,7 +97,7 @@ export const ConfigProvider = ({ value, children, loadConfig }: {
     void mutate(next, { revalidate: false });
   }, [mutate]);
   const refreshConfig = useCallback(() => mutate().catch(() => undefined), [mutate]);
-  const isConfigurationPage = value && pathname === `/${value.owner}/${value.repo}/${encodeURIComponent(value.branch)}/configuration`;
+  const isConfigurationPage = isConfigurationPath(pathname, value);
   const setupConfig = useMemo(() => value ? { ...value, sha: "", version: "", object: {} } : null, [value]);
   return <ConfigContext.Provider value={{ config: config ?? (isConfigurationPage ? setupConfig : null), setConfig, pendingConfig, setUpdateBlocked, applyPendingConfig, refreshConfig }}>
     {error && <div role="alert" className="border-b bg-destructive/10 p-3 text-sm">
