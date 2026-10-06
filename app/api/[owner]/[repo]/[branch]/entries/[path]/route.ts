@@ -70,10 +70,9 @@ export async function GET(
       config = await getConfig(params.owner, params.repo, params.branch, {
         getToken: async () => token,
       });
-      if (!config) throw createHttpError(`Configuration not found for ${params.owner}/${params.repo}/${params.branch}.`, 404);
-
       const expectedConfig = searchParams.get("configSha");
-      if (expectedConfig) assertConfigRevision(expectedConfig, config.sha);
+      if (expectedConfig) assertConfigRevision(expectedConfig, config?.sha);
+      if (!config) throw createHttpError(`Configuration not found for ${params.owner}/${params.repo}/${params.branch}.`, 404);
       schema = getSchemaByName(config.object, name);
       if (!schema) throw createHttpError(`Schema not found for ${name}.`, 404);
 

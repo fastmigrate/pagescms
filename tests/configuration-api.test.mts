@@ -103,10 +103,11 @@ test("content saves and save-time renames reject old or missing configuration be
 
 test("content reads reject a configuration mismatch before fetching the entry", async () => {
   let reads = 0;
+  let present = true;
   const load = loadFixture({
     "@/lib/session-server": { requireApiUserSession: async () => ({ user: { id: "u" } }) },
     "@/lib/token": { getToken: async () => ({ token: "token" }) },
-    "@/lib/config-store": { getConfig: async () => ({ sha: "current", object: {} }) },
+    "@/lib/config-store": { getConfig: async () => present ? ({ sha: "current", object: {} }) : null },
     "@/lib/utils/file": { normalizePath: (path: string) => path },
     "@/lib/schema": {}, "@/fields/registry": {}, "@/lib/serialization": {},
     "@/lib/utils/octokit": { createOctokitInstance: () => { reads++; throw new Error("Unexpected entry read"); } },
@@ -114,6 +115,11 @@ test("content reads reject a configuration mismatch before fetching the entry", 
   const { GET } = load("app/api/[owner]/[repo]/[branch]/entries/[path]/route.ts");
   const response = await GET({ nextUrl: new URL("https://cms.test?name=pages&configSha=old") }, { params: Promise.resolve(params) });
   assert.equal(response.status, 409); assert.equal(reads, 0);
+  present = false;
+  const missing = await GET({ nextUrl: new URL("https://cms.test?name=pages&configSha=old") }, { params: Promise.resolve(params) });
+  assert.equal(missing.status, 409); assert.equal(reads, 0);
+  const unversioned = await GET({ nextUrl: new URL("https://cms.test?name=pages") }, { params: Promise.resolve(params) });
+  assert.equal(unversioned.status, 404); assert.equal(reads, 0);
 });
 
 test("branch creation and deletion clear parsed configuration, file data and metadata", async () => {
