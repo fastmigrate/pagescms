@@ -147,7 +147,7 @@ const isEffectivelyEmpty = (value: unknown): boolean => {
 const generateZodSchema = (
   fields: Field[],
   ignoreHidden: boolean = false
-): z.ZodTypeAny => {
+) => {
   const buildSchemaObject = (currentFields: Field[]): Record<string, z.ZodTypeAny> => {
     return currentFields.reduce((acc: Record<string, z.ZodTypeAny>, field) => {
       if (ignoreHidden && field.hidden) return acc;

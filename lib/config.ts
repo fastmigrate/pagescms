@@ -463,7 +463,7 @@ const validateConfig = (document: YAML.Document.Parsed) => {
     ConfigSchema.parse(content);
   } catch (zodError: any) {
     if (zodError instanceof z.ZodError) {
-      zodError.errors.forEach((error) => {
+      zodError.issues.forEach((error) => {
         processZodError(error, document, errors);
       });
     }
@@ -484,11 +484,18 @@ const processZodError = (
   let range = [0, 0];
 
   switch (error.code) {
+    case "invalid_key":
+      error.issues.forEach((issue: any) => {
+        processZodError({ ...issue, path: [...error.path, ...issue.path] }, document, errors);
+      });
+      break;
+
     case "invalid_union":
       let invalidUnionCount = 0;
       let invalidUnionMessage = "";
-      error.unionErrors.forEach((unionError: any) => {
-        unionError.issues.forEach((issue: any) => {
+      error.errors.forEach((unionIssues: any[]) => {
+        unionIssues.forEach((unionIssue: any) => {
+          const issue = { ...unionIssue, path: [...error.path, ...unionIssue.path] };
           if (issue.path.length === error.path.length) {
             invalidUnionCount++;
             invalidUnionMessage = issue.message;
@@ -497,7 +504,7 @@ const processZodError = (
           }
         });
       });
-      if (invalidUnionCount === error.unionErrors.length) {
+      if (invalidUnionCount === error.errors.length) {
         // If all entries in the union were invalid types, assume none of the schemas could validate the type.
         yamlNode = document.getIn(error.path, true);
         if (!yamlNode || yamlNode?.range == null) {

@@ -3,6 +3,7 @@ import test from "node:test";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
+import { z } from "zod";
 
 import * as duplicateEntry from "../lib/duplicate-entry.ts";
 
@@ -25,6 +26,7 @@ test("the file API duplicates raw saved content through the normal create path",
   let writtenDocument: Record<string, unknown> | undefined;
   let expectedSourcePath = "original.json";
   let rejectNextCreateAsConflict = false;
+  let validateContent = false;
 
   const schema = {
     name: "jobs",
@@ -152,7 +154,9 @@ test("the file API duplicates raw saved content through the normal create path",
       generateFilename: (pattern: string, _schema: unknown, content: Record<string, any>) => (
         pattern.replace("{primary}", content.title.toLowerCase())
       ),
-      generateZodSchema: (fields: Array<Record<string, any>>) => ({
+      generateZodSchema: (fields: Array<Record<string, any>>) => validateContent
+        ? z.object({ title: z.string().min(10, "Title needs ten characters") })
+        : ({
         safeParse: (content: Record<string, unknown>) => ({
           success: true,
           data: Object.fromEntries(fields.map((field) => [field.name, content[field.name]])),
@@ -260,6 +264,18 @@ test("the file API duplicates raw saved content through the normal create path",
   assert.equal(Object.hasOwn(writtenDocument ?? {}, "summary"), false);
   assert.equal(Object.hasOwn(writtenDocument ?? {}, "metadata"), false);
   assert.notEqual(writtenDocument?.id, originalId);
+
+  validateContent = true;
+  writtenPath = "";
+  const invalidResponse = await route.exports.POST(new Request("https://cms.test/api/o/r/main/files/original.json", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ type: "content", configSha: "config-current", name: "jobs", duplicate: { value: "Copy" } }),
+  }), { params: Promise.resolve({ owner: "o", repo: "r", branch: "main", path: "original.json" }) });
+  assert.equal(invalidResponse.status, 500);
+  assert.match(await invalidResponse.text(), /Content validation failed: Title needs ten characters at title/u);
+  assert.equal(writtenPath, "");
+  validateContent = false;
 
   rejectNextCreateAsConflict = true;
   const conflictingRequest = new Request("https://cms.test/api/o/r/main/files/original.json", {

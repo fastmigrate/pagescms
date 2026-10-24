@@ -13,19 +13,16 @@ const ActionSchema = z
   .object({
     name: z
       .string({
-        required_error: "'name' is required.",
-        invalid_type_error: "'name' must be a string.",
+        error: (issue) => issue.input === undefined ? "'name' is required." : "'name' must be a string.",
       })
       .regex(/^[a-zA-Z0-9-_]+$/, {
         message: "'name' must be alphanumeric with dashes and underscores.",
       }),
     label: z.string({
-      required_error: "'label' is required.",
-      invalid_type_error: "'label' must be a string.",
+      error: (issue) => issue.input === undefined ? "'label' is required." : "'label' must be a string.",
     }),
     workflow: z.string({
-      required_error: "'workflow' is required.",
-      invalid_type_error: "'workflow' must be a string.",
+      error: (issue) => issue.input === undefined ? "'workflow' is required." : "'workflow' must be a string.",
     }),
     ref: z
       .string({
@@ -58,15 +55,13 @@ const ActionSchema = z
       .array(z.object({
         name: z
           .string({
-            required_error: "'fields[].name' is required.",
-            invalid_type_error: "'fields[].name' must be a string.",
+            error: (issue) => issue.input === undefined ? "'fields[].name' is required." : "'fields[].name' must be a string.",
           })
           .regex(/^[a-zA-Z0-9-_]+$/, {
             message: "'fields[].name' must be alphanumeric with dashes and underscores.",
           }),
         label: z.string({
-          required_error: "'fields[].label' is required.",
-          invalid_type_error: "'fields[].label' must be a string.",
+          error: (issue) => issue.input === undefined ? "'fields[].label' is required." : "'fields[].label' must be a string.",
         }),
         type: z.enum(["text", "textarea", "select", "checkbox", "number"], {
           message: "'fields[].type' must be 'text', 'textarea', 'select', 'checkbox', or 'number'.",
@@ -220,9 +215,7 @@ const MediaConfigObject = z
 // Named media configuration schema (for array entries)
 const NamedMediaConfig = MediaConfigObject.extend({
   name: z.string({
-    required_error:
-      "'name' is required for media configurations in array format.",
-    invalid_type_error: "'name' must be a string.",
+    error: (issue) => issue.input === undefined ? "'name' is required for media configurations in array format." : "'name' must be a string.",
   }),
 });
 
@@ -283,8 +276,7 @@ const FilenameConfigSchema = z.union([
     .object(
       {
         template: z.string({
-          required_error: "'template' is required.",
-          invalid_type_error: "'template' must be a string.",
+          error: (issue) => issue.input === undefined ? "'template' is required." : "'template' must be a string.",
         }),
         field: z
           .union([
@@ -382,7 +374,7 @@ const generateFieldObjectSchema = (
     description: z.string().optional().nullable(),
     component: z
       .string({
-        invalid_type_error: "'component' must be a string.",
+        error: "'component' must be a string.",
       })
       .regex(/^[a-zA-Z0-9-_]+$/, {
         message:
@@ -403,8 +395,7 @@ const generateFieldObjectSchema = (
       ...{
         name: z
           .string({
-            required_error: "'name' is required.",
-            invalid_type_error: "'name' must be a string.",
+            error: (issue) => issue.input === undefined ? "'name' is required." : "'name' must be a string.",
           })
           .regex(/^[a-zA-Z0-9-_]+$/, {
             message: "'name' must be alphanumeric with dashes and underscores.",
@@ -419,7 +410,7 @@ const generateFieldObjectSchema = (
       ...{
         type: z
           .string({
-            invalid_type_error: "'type' must be a string.",
+            error: "'type' must be a string.",
           })
           .min(1, { message: "'type' cannot be empty." })
           .refine(
@@ -458,8 +449,7 @@ const generateFieldObjectSchema = (
               .object(
                 {
                   regex: z.string({
-                    required_error: "'regex' is required.",
-                    invalid_type_error: "'regex' must be a valid regex string.",
+                    error: (issue) => issue.input === undefined ? "'regex' is required." : "'regex' must be a valid regex string.",
                   }),
                   message: z
                     .string({
@@ -558,8 +548,7 @@ const ContentLeafSchema = z
   .object({
     name: z
       .string({
-        required_error: "'name' is required.",
-        invalid_type_error: "'name' must be a string.",
+        error: (issue) => issue.input === undefined ? "'name' is required." : "'name' must be a string.",
       })
       .regex(/^[a-zA-Z0-9-_]+$/, {
         message: "'name' must be alphanumeric with dashes and underscores.",
@@ -567,13 +556,11 @@ const ContentLeafSchema = z
     label: z.string().optional(),
     description: z.string().optional().nullable(),
     type: z.enum(["collection", "file"], {
-      required_error: "'type' is required.",
-      message: "'type' must be either 'collection' or 'file'.",
+      error: (issue) => issue.input === undefined ? "'type' is required." : "'type' must be either 'collection' or 'file'.",
     }),
     path: z
       .string({
-        required_error: "'path' is required.",
-        invalid_type_error: "'path' must be a string.",
+        error: (issue) => issue.input === undefined ? "'path' is required." : "'path' must be a string.",
       })
       .regex(/^[^/].*[^/]$|^$/, {
         message:
@@ -605,8 +592,7 @@ const ContentLeafSchema = z
                 z.object(
                   {
                     filename: z.string({
-                      required_error: "'filename' is required.",
-                      invalid_type_error: "'filename' must be a string.",
+                      error: (issue) => issue.input === undefined ? "'filename' is required." : "'filename' must be a string.",
                     }),
                     hideDirs: z
                       .enum(["all", "nodes", "others"], {
@@ -778,8 +764,7 @@ const ContentGroupSchema: z.ZodType<any> = z.lazy(() =>
     .object({
       name: z
         .string({
-          required_error: "'name' is required.",
-          invalid_type_error: "'name' must be a string.",
+          error: (issue) => issue.input === undefined ? "'name' is required." : "'name' must be a string.",
         })
         .regex(/^[a-zA-Z0-9-_]+$/, {
           message: "'name' must be alphanumeric with dashes and underscores.",
@@ -787,7 +772,7 @@ const ContentGroupSchema: z.ZodType<any> = z.lazy(() =>
       label: z.string().optional(),
       description: z.string().optional().nullable(),
       type: z.literal("group", {
-        invalid_type_error: "'type' must be 'group'.",
+        error: "'type' must be 'group'.",
       }),
       items: z.array(ContentObjectSchema, {
         message: "'items' must be an array of content entries.",
