@@ -79,12 +79,10 @@ const schema = (field: Field, configObject?: Record<string, any>) => {
       : configObject.media?.[0]);
   const mediaInputPath = mediaConfig?.input;
   const allowedExtensions = getAllowedExtensions(field, mediaConfig);
-  let zodSchema: z.ZodTypeAny;
-
   const isMultiple = !!field.options?.multiple;
   const enforceUnique = isMultiple && field.options?.unique === true;
 
-  zodSchema = isMultiple
+  let zodSchema = isMultiple
     ? z.array(z.string()).optional().nullable()
     : z.string().optional().nullable();
 
