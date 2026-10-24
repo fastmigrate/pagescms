@@ -267,3 +267,25 @@ the two high-severity findings that blocked the configuration release audit.
 The compatible Drizzle Kit patch is 0.31.11. Its existing moderate development
 loader advisories retain the previously accepted boundary. No forced downgrade
 or major dependency update is included.
+
+## Dependency security refresh — 2026-10-24
+
+FM-002 pins Next.js, @next/env, and eslint-config-next to 16.4.3, Zod to
+4.6.7, and @hookform/resolvers to 5.2.2. Better Auth keeps its existing
+1.6.29 pin and shares the patched Zod version through its compatible range.
+The production audit threshold remains `--omit=dev --audit-level=high`.
+
+The Zod 4 migration retains configuration error messages and YAML locations,
+including nested unions and component keys. Entry forms and the file API use
+the current issue format. UUID fields retain their existing acceptance of
+UUID-shaped identifiers through `z.guid()`. Constrained lists reject an
+oversized input before validating each element. Unbounded lists retain their
+existing behavior.
+
+The updated React lint rule flags request-time `Date.now()` in the authenticated
+async admin Server Component. A local rule exception documents that server
+boundary without changing the page behavior or the repository lint rules.
+`tests/zod-validation.test.mts` covers configuration diagnostics, real field
+validators, entry resolver errors, parsed values, and constrained-list rejection.
+The file API regression also checks that validation errors reach the response
+before a GitHub write.
