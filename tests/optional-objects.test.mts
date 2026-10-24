@@ -148,6 +148,7 @@ test("the normal save API omits empty containers and writes defaults for populat
     object: { content: [{ name: "contact", type: "file", path: "content/contact.json", format: "json", extension: "json", fields }] },
   };
   const writes: Record<string, any>[] = [];
+  let savedSource: Record<string, unknown> = {};
   let session: any = { user: { id: "editor", name: "Editor" } };
   let repoAllowed = true;
   const octokit = { rest: { repos: {
@@ -155,6 +156,7 @@ test("the normal save API omits empty containers and writes defaults for populat
       if (!repoAllowed) throw new Error("Repository access denied");
       return { data: {} };
     },
+    getContent: async () => ({ data: { type: "file", content: Buffer.from(JSON.stringify(savedSource)).toString("base64") } }),
     createOrUpdateFileContents: async (input: Record<string, any>) => {
       writes.push(input);
       return { data: {
@@ -199,4 +201,30 @@ test("the normal save API omits empty containers and writes defaults for populat
   repoAllowed = false;
   assert.equal((await save({ title: "Forbidden" })).status, 403);
   assert.equal(writes.length, 3);
+
+  repoAllowed = true;
+  savedSource = {
+    title: "Original",
+    futureNull: null,
+    metadata: { summary: "", futureNull: null, futureEmpty: "", futureObject: {}, futureList: [] },
+    items: [{ title: "First", metadata: { summary: null, futureEmpty: "" } }, { title: "Second", future: "keep" }],
+  };
+  const metadata = { name: "metadata", type: "object", fields: [{ name: "summary", type: "string" }] };
+  Object.assign(config.object.content[0], {
+    type: "collection", path: "content", filename: "{primary}.json",
+    view: { primary: "title" }, operations: { duplicate: true },
+    fields: [{ name: "title", type: "string", required: true }, metadata, {
+      name: "items", type: "object", list: true, fields: [{ name: "title", type: "string" }, metadata],
+    }],
+  });
+  const duplicated = await route.POST(new Request("https://cms.example.test/api/fixture/repo/main/files/content%2Foriginal.json", {
+    method: "POST", headers: { "content-type": "application/json", origin: "https://cms.example.test", host: "cms.example.test" },
+    body: JSON.stringify({ type: "content", name: "contact", configSha: config.sha, duplicate: { value: "Copy" } }),
+  }), { params: Promise.resolve({ owner: "fixture", repo: "repo", branch: "main", path: "content/original.json" }) });
+  assert.equal(duplicated.status, 200);
+  assert.deepEqual(JSON.parse(Buffer.from(writes[3].content, "base64").toString()), {
+    ...savedSource, title: "Copy",
+    metadata: { futureNull: null, futureEmpty: "", futureObject: {}, futureList: [] },
+    items: [{ title: "First", metadata: { futureEmpty: "" } }, { title: "Second", future: "keep" }],
+  });
 });

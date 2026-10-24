@@ -24,7 +24,8 @@ type NavigationNode = {
 const deepMap = (
   contentObject: Record<string, any>,
   fields: Field[],
-  apply: (value: any, field: Field) => any
+  apply: (value: any, field: Field) => any,
+  { omitEmptyOptionalObjects = false }: { omitEmptyOptionalObjects?: boolean } = {},
 ): Record<string, any> => {
   const traverse = (data: any, schema: Field[]): any => {
     const result: any = {};
@@ -58,7 +59,9 @@ const deepMap = (
             : [];
         }
       } else if (field.type === "object") {
-        result[field.name] = traverse(value, field.fields || []);
+        result[field.name] = omitEmptyOptionalObjects && !field.required && isEffectivelyEmpty(value)
+          ? undefined
+          : traverse(value, field.fields || []);
       } else if (field.type === "block") {
         const blockKey = field.blockKey || "_block";
         const blockName = value?.[blockKey];
@@ -105,7 +108,7 @@ const initializeState = (
        appliedValue = getDefaultValue(field);
     }
     return appliedValue;
-  });
+  }, { omitEmptyOptionalObjects: true });
 };
 
 // Get the default value for a field
@@ -160,7 +163,11 @@ const generateZodSchema = (
         fieldSchema = field.required
           ? objectSchema
           : z.preprocess(
-              (value) => (isEffectivelyEmpty(value) ? undefined : value),
+              (value) => isEffectivelyEmpty(value)
+                ? undefined
+                : value && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date)
+                  ? initializeState(field.fields, value)
+                  : value,
               objectSchema.optional()
             );
       } else if (field.type === 'block') {

@@ -19,9 +19,25 @@ active FastMigrate release branch.
 | FM-009 | Active | Downstream development loop | Exercise production client components locally, run an authenticated sandbox stack, and verify exact candidate commits on an isolated VM before merge. | Upstream provides equivalent fixture, sandbox, and immutable candidate-verification workflows. |
 
 | FM-007 | Active | Configuration freshness | Check repository configuration during normal reads, update open editors automatically, preserve dirty drafts and reject saves made with obsolete configuration. | Upstream provides equivalent configuration synchronization and draft-preservation behavior. |
+| FM-011 | Active | Optional object defaults | Keep empty optional editor objects absent and apply child defaults only to populated optional objects before validation. | Upstream supports equivalent optional-object initialization and validation without changing duplicate-content preservation. |
 
 Each active patch must remain a separate commit, include proportionate tests,
 and avoid customer- or infrastructure-specific configuration.
+
+## Optional object defaults
+
+FM-011 leaves absent or recursively empty optional objects uninitialized, even
+when their children have defaults, generated identities, or required fields.
+Once an optional object contains meaningful content, validation initializes its
+children through the normal editor defaults before checking required fields.
+Existing values, including `false`, `0`, and media metadata, take precedence.
+
+This changes editor initialization and the shared validation path. Default
+`deepMap` read/write traversal retains its modeled shape so duplication can
+preserve unknown empty descendants. Required objects, list bounds, block
+discriminators, serialization, authorization, and configuration conflicts keep
+their existing contracts. See `tests/OPTIONAL-OBJECTS-QA.md` for regression and
+production-component fixture checks.
 
 ## Collection image presentation
 
