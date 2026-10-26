@@ -20,8 +20,8 @@ try {
   const originalNotes = [{ text: "Original note" }];
   const expectedContent = (value, notes = originalNotes) => ({ title: value, notes, controls: { enabled: false, count: 0 } });
 
-  await page.goto(baseUrl, { timeout: 90_000 });
-  await title.waitFor();
+  await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 90_000 });
+  await title.waitFor({ timeout: 90_000 });
   await page.waitForFunction(() => document.querySelector('button[aria-label="Save"]')?.disabled);
   for (const label of optionalLabels) await page.getByLabel(label, { exact: true }).fill("");
   await save.click();
