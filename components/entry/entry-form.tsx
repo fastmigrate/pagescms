@@ -1065,6 +1065,17 @@ const EntryForm = ({
   }, [defaultValues, form]);
 
   useEffect(() => {
+    let previousValues = JSON.stringify(form.getValues());
+    const subscription = form.watch((values, { name }) => {
+      const nextValues = JSON.stringify(values);
+      const changed = nextValues !== previousValues;
+      previousValues = nextValues;
+      if (name && changed) onChangeRegistered?.();
+    });
+    return () => subscription.unsubscribe();
+  }, [form, onChangeRegistered]);
+
+  useEffect(() => {
     onDirtyChange?.(form.formState.isDirty);
   }, [form.formState.isDirty, onDirtyChange]);
 

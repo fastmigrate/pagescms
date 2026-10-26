@@ -23,6 +23,8 @@ The regression clears every opening-hours field and the image description. It ve
 
 The fixture can hold one save response. The regression submits one title, edits the title during that request, and releases the response. The newer draft must remain editable. Its next save must use the revision returned by the preceding response and persist that draft. The final Save button must become disabled.
 
+The regression also appends a list item during another held save. The item must survive the response and persist on the next save. Initial list registration and accepted-save resets must keep the editor clean.
+
 Before the production form key includes the accepted entry revision, the first save stores the omissions correctly but mounted controls restore old nested values. The browser regression must fail on that baseline and pass with the fix. The fixture does not replace production save logic or emulate the form reset.
 
 This proof covers client state after accepted saves. It does not change serialization, server conflict handling, or repository writes. Required repository checks and current-head review still apply. Candidate and production deployment proof follow the downstream release policy separately. This fixture alone does not authorize a deployment.

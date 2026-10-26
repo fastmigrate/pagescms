@@ -17,10 +17,12 @@ try {
   const optionalLabels = ["Hours days", "Hours from", "Hours until", "Image description"];
   const savedContent = async () => JSON.parse(await page.getByLabel("Saved content", { exact: true }).textContent());
   const history = async () => JSON.parse(await page.getByLabel("Save history", { exact: true }).textContent());
-  const expectedContent = (value) => ({ title: value, controls: { enabled: false, count: 0 } });
+  const originalNotes = [{ text: "Original note" }];
+  const expectedContent = (value, notes = originalNotes) => ({ title: value, notes, controls: { enabled: false, count: 0 } });
 
   await page.goto(baseUrl, { timeout: 90_000 });
   await title.waitFor();
+  await page.waitForFunction(() => document.querySelector('button[aria-label="Save"]')?.disabled);
   for (const label of optionalLabels) await page.getByLabel(label, { exact: true }).fill("");
   await save.click();
   await page.getByText("Successful saves: 1", { exact: true }).waitFor();
@@ -59,19 +61,39 @@ try {
   await save.click();
   await page.getByText("Successful saves: 4", { exact: true }).waitFor();
   assert.deepEqual(await savedContent(), expectedContent("Newer unsaved draft"));
+  await page.waitForFunction(() => document.querySelector('button[aria-label="Save"]')?.disabled);
+  console.log("PASS: the next save uses the accepted server revision and persists the newer draft");
+
+  await page.getByRole("button", { name: "Hold next save", exact: true }).click();
+  await title.fill("Before list change");
+  await save.click();
+  await page.getByText("Next save held: no. Save pending: yes.", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Add an item", exact: true }).click();
+  const notes = page.getByLabel("Note", { exact: true });
+  await notes.nth(1).waitFor();
+  assert.equal(await notes.nth(1).inputValue(), "New note");
+  await page.getByRole("button", { name: "Release saved response", exact: true }).click();
+  await page.getByText("Successful saves: 5", { exact: true }).waitFor();
+  await page.waitForFunction(() => !document.querySelector('button[aria-label="Save"]')?.disabled);
+  assert.equal(await notes.count(), 2);
+  assert.deepEqual(await savedContent(), expectedContent("Before list change"));
+  await save.click();
+  await page.getByText("Successful saves: 6", { exact: true }).waitFor();
+  assert.deepEqual(await savedContent(), expectedContent("Before list change", [...originalNotes, { text: "New note" }]));
   const saves = await history();
-  assert.equal(saves.length, 4);
+  assert.equal(saves.length, 6);
   assert.equal(saves[0].submittedSha, "fixture-file-0");
   for (let index = 1; index < saves.length; index++) {
     assert.equal(saves[index].submittedSha, saves[index - 1].sha);
     assert.notEqual(saves[index].sha, saves[index - 1].sha);
   }
   await page.waitForFunction(() => document.querySelector('button[aria-label="Save"]')?.disabled);
-  assert.equal(await title.inputValue(), "Newer unsaved draft");
+  assert.equal(await title.inputValue(), "Before list change");
+  assert.equal(await notes.count(), 2);
   for (const label of optionalLabels) assert.equal(await page.getByLabel(label, { exact: true }).inputValue(), "");
   assert.deepEqual(errors, []);
   if (process.env.AFTER_IMAGE) await page.screenshot({ path: process.env.AFTER_IMAGE, fullPage: true });
-  console.log("PASS: the next save uses the accepted server revision and persists the newer draft");
+  console.log("PASS: a list added during a pending save survives the response and the next save stays clean");
   await context.close();
 } finally {
   await browser.close();

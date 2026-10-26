@@ -24,6 +24,9 @@ const config: Config = {
       { name: "social", label: "Social", type: "object", fields: [
         { name: "defaultImageAlt", label: "Image description", type: "string" },
       ] },
+      { name: "notes", label: "Notes", type: "object", list: { collapsible: false }, fields: [
+        { name: "text", label: "Note", type: "string", default: "New note" },
+      ] },
       { name: "controls", type: "object", hidden: true, fields: [
         { name: "enabled", type: "boolean" },
         { name: "count", type: "number" },
@@ -35,6 +38,7 @@ const initialContent = {
   title: "Site settings",
   contact: { hours: { days: "Monday to Friday", from: "08:00", until: "17:00" } },
   social: { defaultImageAlt: "Saved image description" },
+  notes: [{ text: "Original note" }],
   controls: { enabled: false, count: 0 },
 };
 const loadConfig = async () => config;
