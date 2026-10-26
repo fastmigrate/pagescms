@@ -887,7 +887,7 @@ export function Entry({
     isLoading
       ? loadingSkeleton
       : <EntryForm
-        key={`${config.sha}/${path ?? "new"}`}
+        key={`${config.sha}/${path ?? "new"}/${entry?.sha ?? "unsaved"}`}
         fields={entryFields}
         contentObject={entryContentObject}
         onSubmit={onSubmit}

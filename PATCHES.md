@@ -39,6 +39,18 @@ discriminators, serialization, authorization, and configuration conflicts keep
 their existing contracts. See `tests/OPTIONAL-OBJECTS-QA.md` for regression and
 production-component fixture checks.
 
+After an accepted save, the entry form mounts from the accepted file revision.
+This discards cached controller defaults so cleared nested fields stay empty
+across subsequent edits and saves. A response received after newer edits does
+not replace that draft. The separate conflict SHA still advances for the next
+save. See `tests/ENTRY-SAVE-RESET-QA.md` for the consecutive-save and pending-save
+regressions.
+
+Named form-value changes also register with the existing pending-save guard.
+This preserves ordinary field and list edits made while a save is in flight.
+Reset notifications update the comparison baseline without marking the editor
+dirty. Rich-text draft registration remains available before its values flush.
+
 ## Collection image presentation
 
 An image field may set `options.thumbnailSize: small | medium | large` (32/64/96 CSS pixels) and `options.thumbnailFit: cover | contain`. Defaults remain small/cover. These options affect the collection image cell only, preserve stored media paths and use the complete original for contain. Other uses of Thumbnail retain their current sizing and fit.
