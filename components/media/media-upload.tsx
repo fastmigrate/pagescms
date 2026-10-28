@@ -131,9 +131,9 @@ function MediaUploadRoot({ children, path, onUpload, media, extensions, multiple
 
   return (
     <MediaUploadContext.Provider value={contextValue}>
-      {showClassification && config.object.mediaMetadata && <label className="flex items-center gap-2 p-2 text-sm">Kennzeichnung neuer Bilder
-        <select name="upload-classification" aria-label="Kennzeichnung neuer Bilder" value={uploadClassification} onChange={event => (onClassificationChange ?? setLocalClassification)(event.target.value as typeof uploadClassification)} className="rounded border bg-background px-2 py-1">
-          <option value="unmarked">Keine Kennzeichnung</option><option value="generated">AI GENERATED</option><option value="modified">AI MODIFIED</option>
+      {showClassification && config.object.mediaMetadata && <label className="flex flex-col items-start gap-2 p-2 text-sm">AI-Kennzeichnung
+        <select name="upload-classification" aria-label="AI-Kennzeichnung" value={uploadClassification} onChange={event => (onClassificationChange ?? setLocalClassification)(event.target.value as typeof uploadClassification)} className="rounded border bg-background px-2 py-1">
+          <option value="unmarked">Keine Kennzeichnung</option><option value="generated">AI generated</option><option value="modified">AI modified</option>
         </select>
       </label>}
       {children}
