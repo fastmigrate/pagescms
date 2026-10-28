@@ -301,3 +301,18 @@ boundary without changing the page behavior or the repository lint rules.
 validators, entry resolver errors, parsed values, and constrained-list rejection.
 The file API regression also checks that validation errors reach the response
 before a GitHub write.
+
+## Dependency security refresh — 2026-10-28
+
+FM-002 pins Better Auth and its adapter cohort to 1.7.14, removing the high and
+critical production audit findings without changing the audit threshold.
+The custom GitHub profile result keeps the provider subject in `data.id` and
+returns only mutable user fields, as required by Better Auth 1.7.
+The Next.js cookie plugin runs last, after the email OTP hooks. Runtime tests
+exercise GitHub identity/profile sync and encrypted OTP sign-in/session behavior
+using the production auth configuration with isolated external I/O.
+
+The [1.7 upgrade guide](https://github.com/better-auth/better-auth/blob/v1.7.14/docs/content/docs/guides/1-7-upgrade-guide.mdx)
+confirms that the account schema is unchanged from 1.6; no database migration
+or issuer backfill is required. Existing account identities and sessions are
+preserved. The remaining production advisories are low or moderate.
