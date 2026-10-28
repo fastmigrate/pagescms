@@ -91,7 +91,6 @@ export const auth = betterAuth({
 
         return {
           user: {
-            id: profile.id,
             email: profile.email,
             emailVerified,
             ...userMap,
@@ -154,7 +153,6 @@ export const auth = betterAuth({
     },
   },
   plugins: [
-    nextCookies(),
     emailOTP({
       expiresIn: 300,
       otpLength: 6,
@@ -180,5 +178,6 @@ export const auth = betterAuth({
         });
       },
     }),
+    nextCookies(),
   ],
 });
