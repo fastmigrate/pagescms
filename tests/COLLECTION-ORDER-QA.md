@@ -6,7 +6,7 @@ and CollectionReorder components with an injected in-memory request boundary.
 It uses no authentication, database, GitHub, or customer repository.
 
 The collection has more than 25 members in its first group and a second group.
-Use **Reihenfolge bearbeiten** to load complete groups. Move entries with a drag
+Open **Seitenaktionen** and select **Reihenfolge bearbeiten** to load complete groups. Move entries with a drag
 handle, keyboard, or the up/down buttons. Movement changes the draft only.
 Check the saved content and save counter before and after explicit Save.
 Discard restores saved order. Delayed saves disable movement and repeated saves.
@@ -17,8 +17,17 @@ Save includes every complete group in one request and commits changed groups
 atomically. Discard restores every group, including hidden drafts. Closing
 manual mode asks before discarding unsaved changes. The sticky action bar keeps
 Save and the global dirty status available in long lists. A successful save
-shows explicit confirmation and retains the active filter. Rows show titles and
-positions without technical paths or stored numeric values.
+shows explicit confirmation and retains the active filter. Manual mode retains
+the configured browse columns in aligned tables, with a leading drag handle and
+movement buttons. Cells wrap and wide tables scroll within their collection.
+The configured numeric column keeps its saved value while the draft moves, then
+updates from the accepted snapshot after Save. Headers do not sort the draft.
+
+The synthetic **Datum / Zeitraum** column chooses a custom-format date before
+its event text. Every group includes a date plus event, empty date plus event,
+and two empty sources. Check the date badge, text fallback, and empty cell in
+browse and manual mode. Boolean columns retain both True and False badges.
+The public fixture contains no customer titles or source data.
 
 Open `/dev/fixtures/collection-reorder?single=1` for the single-group case.
 There is no Bereich filter or redundant group heading. Select labels come from
@@ -36,7 +45,7 @@ The `/dev/fixtures/entry-save-reset` fixture renders the real Entry notes object
 list. Its up/down controls move both edited values and collapse state. Entry
 Save remains the only write boundary.
 
-Run the pure/config/route checks with `node --test tests/collection-order*.test.mts`.
+Run the pure/config/route checks with `node --test tests/collection-columns.test.mts tests/collection-order*.test.mts tests/collection-sort-api.test.mts`.
 Run the full downstream checks with `npm test`, `npx tsc --noEmit`, and
 `npm run lint`. The isolated browser script records the exact exercised cases.
 Real GitHub atomic writes require the dedicated private sandbox proof. Local

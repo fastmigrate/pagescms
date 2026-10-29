@@ -7,47 +7,59 @@ import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { CSS } from "@dnd-kit/utilities";
 import { ArrowDown, ArrowUp, GripVertical, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CollectionCell } from "./collection-cell";
+import type { CollectionColumn } from "@/lib/collection-columns";
+import { safeAccess } from "@/lib/schema";
 import { requireApiSuccess } from "@/lib/api-client";
 import { moveOrder, orderDirty, orderDraft, orderPayload, type OrderEntry, type OrderFilter, type OrderGroup, type OrderGroupDraft, type OrderRequest, type OrderSnapshot, type OrderState } from "@/lib/collection-order";
 
-function OrderRow({ entry, index, rank, count, disabled, move }: {
-  entry: OrderEntry; index: number; rank: number; count: number; disabled: boolean;
+function OrderRow({ entry, index, count, columns, disabled, move }: {
+  entry: OrderEntry; index: number; count: number; columns: readonly CollectionColumn[]; disabled: boolean;
   move: (from: number, to: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: entry.path, disabled });
-  return <li ref={setNodeRef} data-order-path={entry.path} style={{ transform: CSS.Transform.toString(transform), transition }}
-    className={`relative flex items-center gap-2 border-b bg-background px-3 py-2 last:border-b-0 ${isDragging ? "z-10 opacity-70" : ""}`}>
-    <Button ref={setActivatorNodeRef} type="button" variant="ghost" size="icon-sm" className="shrink-0 touch-none cursor-grab" disabled={disabled}
-      {...attributes} {...listeners} aria-label={`${entry.label} ziehen`}><GripVertical className="size-4" /></Button>
-    <span className="w-8 shrink-0 text-center tabular-nums" aria-label="Entwurfsposition">{index + 1}</span>
-    <div className="min-w-0 flex-1"><p className="font-medium break-words">{entry.label}</p>
-      {rank !== index + 1 && <p className="text-xs text-muted-foreground">Bisher Platz {rank}</p>}</div>
-    <div className="flex shrink-0 gap-1">
+  return <tr ref={setNodeRef} data-order-path={entry.path} style={{ transform: CSS.Transform.toString(transform), transition }}
+    className={`relative border-b bg-background last:border-b-0 ${isDragging ? "z-10 opacity-70" : ""}`}>
+    <td className="p-2 align-top"><Button ref={setActivatorNodeRef} type="button" variant="ghost" size="icon-sm" className="touch-none cursor-grab" disabled={disabled}
+      {...attributes} {...listeners} aria-label={`${entry.label} ziehen`}><GripVertical className="size-4" /></Button></td>
+    {columns.map(column => <td key={column.id} className="min-w-36 max-w-sm whitespace-normal break-words p-3 align-top [overflow-wrap:anywhere]" data-column-id={column.id}>
+      <CollectionCell column={column} valueAt={path => safeAccess(entry.fields, path)} />
+    </td>)}
+    <td className="p-2 align-top"><div className="flex gap-1">
       <Button type="button" variant="outline" size="icon-sm" aria-label={`${entry.label} nach oben`} disabled={disabled || index === 0} onClick={() => move(index, index - 1)}><ArrowUp className="size-4" /></Button>
       <Button type="button" variant="outline" size="icon-sm" aria-label={`${entry.label} nach unten`} disabled={disabled || index === count - 1} onClick={() => move(index, index + 1)}><ArrowDown className="size-4" /></Button>
-    </div>
-  </li>;
+    </div></td>
+  </tr>;
 }
 
-function OrderGroupList({ group, draft, showHeading, disabled, move }: {
-  group: OrderGroup; draft: OrderGroupDraft; showHeading: boolean; disabled: boolean;
+function OrderGroupList({ group, draft, columns, showHeading, disabled, move }: {
+  group: OrderGroup; draft: OrderGroupDraft; columns: readonly CollectionColumn[]; showHeading: boolean; disabled: boolean;
   move: (groupId: string, from: number, to: number) => void;
 }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
-  const entries = new Map(group.entries.map((entry, index) => [entry.path, { entry, rank: index + 1 }]));
+  const entries = new Map(group.entries.map(entry => [entry.path, entry]));
   const moveEntry = (from: number, to: number) => move(group.id, from, to);
   const dragEnd = ({ active, over }: DragEndEvent) => {
     if (!disabled && over) moveEntry(draft.paths.indexOf(String(active.id)), draft.paths.indexOf(String(over.id)));
   };
-  return <section data-order-group={group.id} aria-label={group.label} className="space-y-2">
+  return <section data-order-group={group.id} aria-label={group.label} className="min-w-0 space-y-2">
     {showHeading && <h3 className="flex items-center gap-2 font-semibold">{group.label}<span className="text-sm font-normal text-muted-foreground">{draft.paths.length} Einträge</span></h3>}
     <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragEnd={dragEnd}>
-      <SortableContext items={draft.paths} strategy={verticalListSortingStrategy}>
-        <ol aria-label={`Reihenfolge ${group.label}`} className="overflow-hidden rounded-lg border">{draft.paths.map((path, index) => {
-          const item = entries.get(path);
-          return item && <OrderRow key={path} {...item} index={index} count={draft.paths.length} disabled={disabled} move={moveEntry} />;
-        })}</ol>
-      </SortableContext>
+      <div className="max-w-full overflow-x-auto rounded-lg border">
+        <table aria-label={`Reihenfolge ${group.label}`} className="w-full text-sm text-left">
+          <thead className="border-b bg-muted/50"><tr>
+            <th scope="col" className="w-12 p-3"><span className="sr-only">Ziehen</span></th>
+            {columns.map(column => <th key={column.id} scope="col" className="min-w-36 p-3 font-medium">{column.label}</th>)}
+            <th scope="col" className="w-24 p-3">Verschieben</th>
+          </tr></thead>
+          <SortableContext items={draft.paths} strategy={verticalListSortingStrategy}>
+            <tbody>{draft.paths.map((path, index) => {
+              const entry = entries.get(path);
+              return entry && <OrderRow key={path} entry={entry} index={index} count={draft.paths.length} columns={columns} disabled={disabled} move={moveEntry} />;
+            })}</tbody>
+          </SortableContext>
+        </table>
+      </div>
     </DndContext>
     {!draft.paths.length && <p>Dieser Bereich enthält keine Einträge.</p>}
   </section>;
@@ -135,12 +147,12 @@ export function CollectionReorder({ url, request = fetch, onClose, onSaved, setU
     }
   };
 
-  if (!active) return <section className="space-y-4" aria-label="Reihenfolge bearbeiten">
+  if (!active) return <section className="min-w-0 space-y-4" aria-label="Reihenfolge bearbeiten">
     <Button variant="outline" onClick={onClose}>Zur Übersicht</Button>
     {state.status === "loading" ? <p role="status">Reihenfolge wird geladen…</p> : <><p role="alert">{state.error}</p><Button onClick={() => setLoadAttempt(attempt => attempt + 1)}>Erneut laden</Button></>}
   </section>;
   const multipleGroups = state.groups.length > 1;
-  return <section className="space-y-4" aria-label="Reihenfolge bearbeiten" aria-busy={saving}>
+  return <section className="min-w-0 space-y-4" aria-label="Reihenfolge bearbeiten" aria-busy={saving}>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h2 className="text-xl font-semibold">Reihenfolge bearbeiten</h2><p className="text-sm text-muted-foreground">Innerhalb eines Bereichs verschieben. Erst Speichern übernimmt alle Änderungen.</p></div>
       <Button variant="outline" disabled={saving} onClick={close}>Zur Übersicht</Button>
@@ -161,9 +173,9 @@ export function CollectionReorder({ url, request = fetch, onClose, onSaved, setU
     </div>
     {state.error && <p role="alert" className="rounded-md border border-destructive p-3 text-sm">{state.error} Alle Entwürfe bleiben erhalten.</p>}
     <p className="text-xs text-muted-foreground">Ziehen oder Pfeiltasten verwenden. Am Ziehgriff mit Leertaste starten, mit Pfeiltasten verschieben und mit Leertaste ablegen.</p>
-    <div className="space-y-6">{state.groups.filter(group => filter.kind === "all" || filter.id === group.id).map(draft => {
+    <div className="min-w-0 space-y-6">{state.groups.filter(group => filter.kind === "all" || filter.id === group.id).map(draft => {
       const group = state.baseline.groups.find(group => group.id === draft.id)!;
-      return <OrderGroupList key={group.id} group={group} draft={draft} showHeading={multipleGroups} disabled={saving} move={move} />;
+      return <OrderGroupList key={group.id} group={group} draft={draft} columns={state.baseline.columns} showHeading={multipleGroups} disabled={saving} move={move} />;
     })}</div>
     {!state.groups.length && <p>Diese Sammlung enthält keine Einträge.</p>}
   </section>;

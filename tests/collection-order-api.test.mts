@@ -583,3 +583,33 @@ test("snapshot uses select labels with stable group identities and qualifies mul
   config.content[0].fields[1].label = "Titel";
   assert.equal((await fixture({ config }).read()).groups[0].label, "Bereich: Presse / Titel: Alpha");
 });
+
+test("order snapshots project configured read-transformed columns and saves accept only numeric ordering metadata", async () => {
+  const config: any = defaultConfig();
+  config.components = { metadata: { type: "object", fields: [{ name: "date", component: "date" }] }, date: { type: "date", options: { format: "dd.MM.yyyy" } } };
+  const schema = config.content[0];
+  schema.fields.push({ name: "meta", component: "metadata" }, { name: "event", type: "string" }, { name: "enabled", type: "boolean" }, { name: "count", type: "number" });
+  schema.view.fields = ["title", { name: "when", label: "Date or event", fallback: ["meta.date", "event"] }, "sortOrder", "enabled", "count"];
+  const documents: any = defaultDocuments();
+  Object.assign(documents["content/jobs/a.json"], { meta: { date: "29.10.2026", private: "omit" }, event: "Autumn", enabled: false, count: 0 });
+  Object.assign(documents["content/jobs/b.json"], { meta: { date: "" }, event: "Autumn", enabled: true });
+  Object.assign(documents["content/jobs/c.json"], { meta: { date: "" }, event: "   " });
+  const f = fixture({ config, documents });
+  const snapshot = await f.read();
+  assert.deepEqual(snapshot.columns.map((column: any) => column.id), ["title", "display:when", "sortOrder", "enabled", "count"]);
+  assert.equal(snapshot.columns[1].sources[0].field.type, "date");
+  assert.deepEqual(snapshot.columns[1].sources[0].field.options, { format: "dd.MM.yyyy" });
+  const first = snapshot.groups[0].entries[0];
+  assert.deepEqual(JSON.parse(JSON.stringify(first.fields)), { title: "Alpha", meta: { date: "2026-10-29" }, event: "Autumn", sortOrder: 10, enabled: false, count: 0 });
+  assert.equal(Object.hasOwn(first.fields, "future"), false);
+  const payload = await f.payload(["content/jobs/b.json", "content/jobs/a.json"]);
+  await assert.rejects(() => f.save({ ...payload, columns: snapshot.columns }), { status: 400 });
+  await assert.rejects(() => f.save({ ...payload, groups: payload.groups.map((group: any) => ({ ...group, fields: first.fields })) }), { status: 400 });
+  assert.equal(f.writes, 0);
+  const result = await f.save(payload);
+  assert.deepEqual(f.value("content/jobs/a.json"), { ...documents["content/jobs/a.json"], sortOrder: 2 });
+  assert.deepEqual(f.value("content/jobs/b.json"), { ...documents["content/jobs/b.json"], sortOrder: 1 });
+  assert.deepEqual(f.value("content/jobs/c.json"), documents["content/jobs/c.json"]);
+  assert.equal(result.groups[0].entries[1].fields.sortOrder, 2);
+  assert.equal(result.groups[0].entries[1].fields.meta.date, "2026-10-29");
+});

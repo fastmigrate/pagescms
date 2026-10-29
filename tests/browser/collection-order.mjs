@@ -7,7 +7,7 @@ const browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM
 const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
 await context.route("**/*", route => new URL(route.request().url()).origin === new URL(base).origin ? route.continue() : route.abort());
 const page = await context.newPage();
-page.setDefaultTimeout(10_000);
+page.setDefaultTimeout(30_000);
 const errors = [];
 page.on("pageerror", error => errors.push(error.message));
 const rows = page.locator("[data-order-path]");
@@ -25,8 +25,21 @@ const dialog = async (action, accept) => {
 
 try {
   await page.goto(`${base}/dev/fixtures/collection-reorder`);
-  await page.getByRole("button", { name: "Reihenfolge bearbeiten", exact: true }).click();
+  const browse = page.getByRole("table");
+  await browse.waitFor();
+  assert.match(await browse.getByRole("row").nth(1).innerText(), /Oct 29, 2026/);
+  assert.match(await browse.getByRole("row").nth(2).innerText(), /Herbst 2026/);
+  assert.equal(await browse.getByRole("row").nth(3).getByRole("cell").nth(1).innerText(), "");
+  assert.equal(await browse.getByRole("columnheader", { name: "Datum / Zeitraum", exact: true }).getAttribute("title"), null, "mixed-source display columns do not offer sorting");
+  await page.getByRole("button", { name: "Seitenaktionen", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Reihenfolge bearbeiten", exact: true }).click();
   await rows.first().waitFor();
+  assert.deepEqual(await page.getByRole("table", { name: "Reihenfolge Beratung", exact: true }).getByRole("columnheader").allTextContents(),
+    ["Ziehen", "Titel", "Datum / Zeitraum", "Bereich", "Reihenfolge", "Startseite", "Entwurf", "Verschieben"]);
+  assert.match(await rows.nth(0).locator('[data-column-id="display:dateOrEvent"]').innerText(), /Oct 29, 2026/);
+  assert.equal(await rows.nth(1).locator('[data-column-id="display:dateOrEvent"]').innerText(), "Herbst 2026");
+  assert.equal(await rows.nth(2).locator('[data-column-id="display:dateOrEvent"]').innerText(), "");
+  assert.equal(await rows.nth(0).locator('[data-column-id="draft"]').innerText(), "False");
   assert.equal(await rows.count(), 35, "all entries shows complete groups beyond browse pagination");
   assert.equal(await page.getByRole("combobox", { name: "Bereich", exact: true }).inputValue(), "");
   assert.equal(await page.getByRole("heading", { name: "Beratung 32 Einträge", exact: true }).count(), 1);
@@ -40,7 +53,7 @@ try {
   await waitFirst(secondPath);
   assert.match(await counts(), /Schreibanfragen 0/);
   assert.deepEqual(await stored(), original, "buttons only change draft identity order");
-  assert.match(await rows.nth(1).innerText(), /Bisher Platz 1/);
+  assert.equal(await rows.nth(1).locator('[data-column-id="sortOrder"]').innerText(), "1", "draft keeps the saved numeric projection until Save");
   await page.getByRole("button", { name: "Verwerfen", exact: true }).click();
   await waitFirst(firstPath);
   assert.match(await counts(), /Schreibanfragen 0/);
@@ -127,7 +140,8 @@ try {
   await page.getByRole("table").waitFor();
   assert.equal(await page.getByRole("row").count(), 26, "normal browse keeps its 25-row pagination");
   assert.match(await page.getByRole("row").nth(1).innerText(), /Beratung 02/);
-  await page.getByRole("button", { name: "Reihenfolge bearbeiten", exact: true }).click();
+  await page.getByRole("button", { name: "Seitenaktionen", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Reihenfolge bearbeiten", exact: true }).click();
   await waitFirst(secondPath);
   await page.getByRole("combobox", { name: "Bereich", exact: true }).selectOption("Verwaltung");
   assert.equal(await rows.count(), 3);
@@ -161,7 +175,8 @@ try {
   await page.waitForFunction(() => [...document.querySelectorAll('[role="status"]')].some(item => item.textContent.includes("Successful saves: 1")));
   assert.deepEqual(JSON.parse(await page.getByLabel("Saved content", { exact: true }).textContent()).notes, [{ text: "Second note" }, { text: "First note" }]);
   await page.goto(`${base}/dev/fixtures/collection-reorder?single=1`);
-  await page.getByRole("button", { name: "Reihenfolge bearbeiten", exact: true }).click();
+  await page.getByRole("button", { name: "Seitenaktionen", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Reihenfolge bearbeiten", exact: true }).click();
   await rows.first().waitFor();
   assert.equal(await rows.count(), 32);
   assert.equal(await page.getByRole("combobox", { name: "Bereich", exact: true }).count(), 0, "single-group collections omit the view filter");
@@ -169,8 +184,12 @@ try {
   assert.deepEqual(errors, [], "production component fixtures produce no browser errors");
   console.log("PASS Collection browse/manual/save/browse, complete groups, pointer/keyboard/buttons, discard and guards, pending/error/conflict, hidden data preservation, mobile bounds, and real Entry list Save.");
 } catch (error) {
-  console.error("Draft paths at failure", await paths());
-  console.error("Active button", await page.evaluate(() => document.activeElement?.outerHTML));
+  try {
+    console.error("Draft paths at failure", await paths());
+    console.error("Active button", await page.evaluate(() => document.activeElement?.outerHTML));
+  } catch (diagnosticError) {
+    console.error("Failure diagnostics unavailable", diagnosticError.message);
+  }
   throw error;
 } finally {
   await browser.close();

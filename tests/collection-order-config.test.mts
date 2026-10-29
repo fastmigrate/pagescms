@@ -29,3 +29,26 @@ test('actual schema rejects unsupported reorder configuration rather than exposi
  ];
  for(const value of variants) assert.equal(ConfigSchema.safeParse(config(value,{cycle:{component:'cycle'}})).success,false,JSON.stringify(value));
 });
+
+test('fallback display configuration is backwards compatible and resolves nested component scalar sources',()=>{
+ const columns=['title',{name:'when',label:'Date or event',fallback:['meta.date','title']}];
+ const entry={...item,fields:[...item.fields,{name:'meta',component:'metadata'}],view:{...item.view,fields:columns}};
+ const result=ConfigSchema.safeParse(config(entry,{metadata:{component:'base'},base:{type:'object',fields:[{name:'date',component:'date'}]},date:{type:'date',options:{format:'dd.MM.yyyy'}}}));
+ assert.equal(result.success,true,JSON.stringify(result.error?.issues));
+ assert.equal(ConfigSchema.safeParse(config({...item,view:{...item.view,fields:['unknown','date']}})).success,true,'legacy string validation is unchanged');
+ const invalid=[
+ {name:'when',label:'',fallback:['title']},{name:'when',label:'   ',fallback:['title']},
+ {name:'when',label:'When',fallback:[]},{name:'when',label:'When',fallback:['missing']},
+ {name:'when',label:'When',fallback:['title','title']},{name:'when',label:'When',fallback:['constructor.title']},
+ {name:'when',label:'When',fallback:['meta']},{name:'when',label:'When',fallback:['many']},
+ {name:'when',label:'When',fallback:['choice']},{name:'when',label:'When',fallback:['missingComponent']},
+ {name:'when',label:'When',fallback:['cyclic']},{name:'when',label:'When',fallback:['meta.list.title']},
+ {name:'when',label:'When',fallback:['title'],expression:'title'},
+ ];
+ for(const column of invalid){
+   const value={...item,fields:[...item.fields,{name:'meta',type:'object',fields:[{name:'list',type:'object',list:true,fields:[{name:'title',type:'string'}]}]},{name:'many',type:'string',list:true},{name:'choice',type:'select',options:{multiple:true,values:['a']}},{name:'missingComponent',component:'missing'},{name:'cyclic',component:'cycle'}],view:{...item.view,fields:[column]}};
+   assert.equal(ConfigSchema.safeParse(config(value,{cycle:{component:'cycle'}})).success,false,JSON.stringify(column));
+ }
+ const duplicate={name:'same',label:'Same',fallback:['title']};
+ assert.equal(ConfigSchema.safeParse(config({...item,view:{...item.view,fields:[duplicate,duplicate]}})).success,false);
+});

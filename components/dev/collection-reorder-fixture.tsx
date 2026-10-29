@@ -8,21 +8,31 @@ import { RepoHeaderProvider, useRepoHeaderState } from "@/components/repo/repo-h
 import { Button } from "@/components/ui/button";
 import { ConfigProvider } from "@/contexts/config-context";
 import type { OrderRequest, OrderSave, OrderSnapshot } from "@/lib/collection-order";
+import { resolveCollectionColumns } from "@/lib/collection-columns";
+import { readFns } from "@/fields/registry";
 import type { Config } from "@/types/config";
 
 const config: Config = {
   owner: "fixture", repo: "collection-reorder", branch: "main", sha: "config-0", version: "3.0",
   object: { content: [{ name: "jobs", label: "Stellen", type: "collection", path: "content/jobs", format: "json", extension: "json", filename: "{fields.id}.json", subfolders: false,
     operations: { create: false, delete: false, rename: false },
-    fields: [{ name: "id", type: "string" }, { name: "title", label: "Titel", type: "string" }, { name: "department", label: "Bereich", type: "string" }, { name: "sortOrder", label: "Reihenfolge", type: "number", hidden: true, options: { min: 1, step: 1 } }],
-    view: { primary: "title", fields: ["title", "department"], layout: "list", sortPresets: [{ name: "website", label: "Website", fields: [{ field: "department", order: "asc" }, { field: "sortOrder", order: "asc" }, { field: "id", order: "asc" }] }], default: { sortPreset: "website" }, reorder: { field: "sortOrder", sortPreset: "website" } },
+    fields: [{ name: "id", type: "string" }, { name: "title", label: "Titel", type: "string" }, { name: "department", label: "Bereich", type: "string" }, { name: "publishedDate", label: "Datum", type: "date", options: { format: "dd.MM.yyyy" } }, { name: "eventLabel", label: "Zeitraum", type: "string" }, { name: "featured", label: "Startseite", type: "boolean" }, { name: "draft", label: "Entwurf", type: "boolean" }, { name: "sortOrder", label: "Reihenfolge", type: "number", hidden: true, options: { min: 1, step: 1 } }],
+    view: { primary: "title", fields: ["title", { name: "dateOrEvent", label: "Datum / Zeitraum", fallback: ["publishedDate", "eventLabel"] }, "department", "sortOrder", "featured", "draft"], layout: "list", sortPresets: [{ name: "website", label: "Website", fields: [{ field: "department", order: "asc" }, { field: "sortOrder", order: "asc" }, { field: "id", order: "asc" }] }], default: { sortPreset: "website" }, reorder: { field: "sortOrder", sortPreset: "website" } },
   }] },
 };
-type Document = { id: string; title: string; department: string; sortOrder: number; hidden: { enabled: boolean; zero: number; empty: null; unknown: string[] } };
+type Document = { id: string; title: string; department: string; sortOrder: number; publishedDate: string; eventLabel: string; featured: boolean; draft: boolean; hidden: { enabled: boolean; zero: number; empty: null; unknown: string[] } };
 const initialDocuments = Object.fromEntries(["Beratung", "Verwaltung"].flatMap((department, group) => Array.from({ length: group === 0 ? 32 : 3 }, (_, index) => {
   const id = `${group === 0 ? "beratung" : "verwaltung"}-${String(index + 1).padStart(2, "0")}`;
   return [`content/jobs/${id}.json`, { id, title: `${department} ${String(index + 1).padStart(2, "0")}`, department, sortOrder: index + 1,
+    publishedDate: index % 3 === 0 ? "29.10.2026" : "", eventLabel: index % 3 === 2 ? "   " : "Herbst 2026", featured: index % 2 === 0, draft: index % 2 === 1,
     hidden: { enabled: false, zero: 0, empty: null, unknown: [id, "behalten"] } } satisfies Document];
+})));
+const columns = resolveCollectionColumns(config.object.content[0]);
+const displayFields = (document: Document) => Object.fromEntries(columns.flatMap(column => column.sources.map(({ path, field }) => {
+  const value = document[path as keyof Document];
+  const read = readFns[field.type];
+  const transformed = read?.(value, field, config);
+  return [path, transformed === undefined ? value : transformed];
 })));
 const loadConfig = async () => config;
 function FixtureHeader() { return <div>{useRepoHeaderState().header}</div>; }
@@ -36,9 +46,9 @@ export function CollectionReorderFixture({ singleGroup = false }: { singleGroup?
   const [nextMode, setNextMode] = useState(mode.current);
   const [pending, setPending] = useState(false);
   const [counts, setCounts] = useState({ reads: 0, posts: 0, saves: 0 });
-  const snapshot = useCallback((): OrderSnapshot => ({ head: `head-${revision.current}`, configSha: config.sha, field: "sortOrder",
+  const snapshot = useCallback((): OrderSnapshot => ({ head: `head-${revision.current}`, configSha: config.sha, field: "sortOrder", columns,
     groups: (singleGroup ? ["Beratung"] : ["Beratung", "Verwaltung"]).map(department => ({ id: department, label: department,
-      entries: Object.entries(documents.current).filter(([, doc]) => doc.department === department).sort(([, a], [, b]) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id)).map(([path, doc]) => ({ path, sha: shas.current[path], label: doc.title, value: doc.sortOrder })),
+      entries: Object.entries(documents.current).filter(([, doc]) => doc.department === department).sort(([, a], [, b]) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id)).map(([path, doc]) => ({ path, sha: shas.current[path], label: doc.title, value: doc.sortOrder, fields: displayFields(doc) })),
     })),
   }), [singleGroup]);
   const request = useCallback<OrderRequest>(async (input, init) => {
@@ -46,7 +56,7 @@ export function CollectionReorderFixture({ singleGroup = false }: { singleGroup?
     if (init?.method !== "POST") {
       setCounts(current => ({ ...current, reads: current.reads + 1 }));
       if (url.pathname.endsWith("/order")) return Response.json({ status: "success", data: snapshot() });
-      return Response.json({ status: "success", data: { contents: Object.entries(documents.current).map(([path, doc]) => ({ path, name: path.split("/").at(-1), sha: shas.current[path], type: "file", fields: { ...doc } })) } });
+      return Response.json({ status: "success", data: { contents: Object.entries(documents.current).map(([path, doc]) => ({ path, name: path.split("/").at(-1), sha: shas.current[path], type: "file", fields: displayFields(doc) })) } });
     }
     if (!url.pathname.endsWith("/order")) throw new Error("Die Fixture erlaubt nur die Reihenfolge-Speichergrenze.");
     setCounts(current => ({ ...current, posts: current.posts + 1 }));

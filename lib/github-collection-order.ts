@@ -4,10 +4,11 @@ import { readFns } from "@/fields/registry";
 import { createHttpError } from "@/lib/api-error";
 import { buildCommitTokens, resolveCommitIdentity, resolveCommitMessage } from "@/lib/commit-message";
 import { normalizeConfig, parseAndValidateConfig } from "@/lib/config";
+import { resolveCollectionColumns } from "@/lib/collection-columns";
 import { comparePresetEntries, type SortPreset } from "@/lib/collection-sort";
 import { orderValues, reorderDefinition, type OrderSnapshot, type ReorderDefinition } from "@/lib/collection-order";
 import { clearFileCache, setBranchHeadSha, updateFileCache } from "@/lib/github-cache-file";
-import { getFieldByPath, getPrimaryField, getSchemaByName } from "@/lib/schema";
+import { getDateFromFilename, getFieldByPath, getPrimaryField, getSchemaByName } from "@/lib/schema";
 import { parse } from "@/lib/serialization";
 import { MAX_FILE_REQUEST_BYTES } from "@/lib/upload-limits";
 import { getFileName, getParentPath, normalizePath } from "@/lib/utils/file";
@@ -91,16 +92,25 @@ function snapshotFor(loaded: Omit<LoadedOrder, "snapshot" | "treeSha">): OrderSn
       values: rule.values?.map(value => readValue(value, rule.field)) as typeof rule.values,
     })),
   };
-  const primary = getPrimaryField(schema);
-  const paths = new Set([...preset.fields.map(rule => rule.field), ...(primary ? [primary] : [])]);
-  const entries = loaded.documents.map(document => {
+  const columns = resolveCollectionColumns(schema);
+  const displayPaths = new Set(columns.flatMap(column => column.sources.map(source => source.path)));
+  const project = (document: OrderDocument, paths: Iterable<string>) => {
     const fields: Record<string, any> = Object.create(null);
     for (const path of paths) {
       const parts = path.split(".");
       let target = fields;
       for (const part of parts.slice(0, -1)) target = target[part] ??= Object.create(null);
-      target[parts[parts.length - 1]] = readValue(valueAt(document.content, path), path);
+      let value = readValue(valueAt(document.content, path), path);
+      if (path === "name" && !schema.fields?.length) value = getFileName(document.path);
+      if (path === "date" && !value && schema.filename.startsWith("{year}-{month}-{day}")) value = getDateFromFilename(getFileName(document.path))?.string;
+      target[parts[parts.length - 1]] = value;
     }
+    return fields;
+  };
+  const primary = getPrimaryField(schema);
+  const paths = new Set([...preset.fields.map(rule => rule.field), ...(primary ? [primary] : [])]);
+  const entries = loaded.documents.map(document => {
+    const fields = project(document, paths);
     return { document, fields, path: document.path };
   }).sort((a, b) => comparePresetEntries(a, b, preset));
   const groups = new Map<string, { id: string; label: string; entries: OrderSnapshot["groups"][number]["entries"][number][] }>();
@@ -135,13 +145,14 @@ function snapshotFor(loaded: Omit<LoadedOrder, "snapshot" | "treeSha">): OrderSn
       sha: document.sha,
       label: label != null && label !== "" && ["string", "number", "boolean"].includes(typeof label) ? String(label) : getFileName(document.path),
       value: typeof value === "number" && Number.isFinite(value) ? value : null,
+      fields: project(document, displayPaths),
     });
   }
   for (const group of groups.values()) {
     try { orderValues(definition, group.entries.length); }
     catch (error) { throw createHttpError(error instanceof Error ? error.message : "Invalid manual order values.", 400); }
   }
-  return { head: loaded.head, configSha: loaded.configSha, field: definition.field, groups: [...groups.values()] };
+  return { head: loaded.head, configSha: loaded.configSha, field: definition.field, columns, groups: [...groups.values()] };
 }
 
 async function loadOrder(options: OrderContext, octokit: ReturnType<typeof createOctokitInstance>, expectedHead?: string): Promise<LoadedOrder> {

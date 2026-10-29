@@ -1,13 +1,14 @@
 import { z } from "zod";
+import type { CollectionColumn } from "./collection-columns";
 import type { SortPreset } from "./collection-sort";
 
 export const ReorderConfigSchema = z.object({
   field: z.string().regex(/^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*$/).refine(value => !value.split('.').some(part => ['__proto__', 'prototype', 'constructor'].includes(part))),
   sortPreset: z.string().min(1),
 }).strict();
-export type OrderEntry = Readonly<{ path: string; sha: string; label: string; value: number | null }>;
+export type OrderEntry = Readonly<{ path: string; sha: string; label: string; value: number | null; fields: Record<string, unknown> }>;
 export type OrderGroup = Readonly<{ id: string; label: string; entries: readonly OrderEntry[] }>;
-export type OrderSnapshot = Readonly<{ head: string; configSha: string; field: string; groups: readonly OrderGroup[] }>;
+export type OrderSnapshot = Readonly<{ head: string; configSha: string; field: string; columns: readonly CollectionColumn[]; groups: readonly OrderGroup[] }>;
 export type OrderGroupDraft = { id: string; paths: string[] };
 export type OrderDraft = { baseline: OrderSnapshot; groups: OrderGroupDraft[]; error?: string };
 export type OrderFilter = { kind: 'all' } | { kind: 'group'; id: string };

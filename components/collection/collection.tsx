@@ -21,7 +21,7 @@ import {
   normalizePath,
   sortFiles,
 } from "@/lib/utils/file";
-import { viewComponents, readFns } from "@/fields/registry";
+import { readFns } from "@/fields/registry";
 import { getSchemaActions } from "@/lib/actions";
 import {
   getSchemaByName,
@@ -33,6 +33,8 @@ import { requireApiSuccess } from "@/lib/api-client";
 import { EmptyCreate } from "@/components/empty-create";
 import { FileOptions } from "@/components/file/file-options";
 import { presetColumns, presetColumnId, presetRequestFields } from "@/lib/collection-sort";
+import { resolveCollectionColumns, selectCollectionSource } from "@/lib/collection-columns";
+import { CollectionCell } from "./collection-cell";
 import { CollectionTable } from "./collection-table";
 import { CollectionReorder } from "./collection-reorder";
 import type { OrderRequest } from "@/lib/collection-order";
@@ -94,6 +96,7 @@ type GroupTrailItem = {
 const CollectionHeaderActions = memo(function CollectionHeaderActions({
   addEntryHref,
   actionNode,
+  onReorder,
   collectionPath,
   name,
   showAddEntry,
@@ -103,6 +106,7 @@ const CollectionHeaderActions = memo(function CollectionHeaderActions({
 }: {
   addEntryHref: string;
   actionNode?: ReactNode;
+  onReorder?: () => void;
   collectionPath: string;
   name: string;
   showAddEntry: boolean;
@@ -120,6 +124,10 @@ const CollectionHeaderActions = memo(function CollectionHeaderActions({
   return (
     <div className="flex items-center gap-x-2">
       {actionNode}
+      {onReorder && <DropdownMenu>
+        <DropdownMenuTrigger asChild><Button variant="outline" size="icon" aria-label="Seitenaktionen"><EllipsisVertical /></Button></DropdownMenuTrigger>
+        <DropdownMenuContent align="end"><DropdownMenuItem onSelect={onReorder}>Reihenfolge bearbeiten</DropdownMenuItem></DropdownMenuContent>
+      </DropdownMenu>}
       <div className="relative hidden sm:block w-52 md:w-64">
         <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 opacity-50 pointer-events-none" />
         <Input
@@ -199,55 +207,7 @@ export function Collection({ name, path, request = fetch }: { name: string; path
   const canRename = operations.rename;
   const canDelete = operations.delete;
 
-  const viewFields = useMemo(() => {
-    let pathAndFieldArray: any[] = [];
-    if (schema.fields) {
-      if (schema.view?.fields && schema.view?.fields.length > 0) {
-        // If we have a list of fields defined for the view
-        schema.view.fields.forEach((path: string) => {
-          const field = getFieldByPath(schema.fields, path);
-          if (field && !["object", "block"].includes(field.type))
-            pathAndFieldArray.push({ path: path, field: field });
-        });
-      } else {
-        pathAndFieldArray = schema.fields
-          .filter(
-            (field: any) =>
-              !["object", "block"].includes(field.type) && !field.hidden,
-          )
-          .map((field: any) => ({ path: field.name, field: field }));
-      }
-    } else {
-      pathAndFieldArray.push({
-        path: "name",
-        field: {
-          label: "Name",
-          name: "name",
-          type: "string",
-        },
-      });
-    }
-
-    // If the filename starts with {year}-{month}-{day} and date is listed in the
-    // view fields and is not an actual field, or if there are no fields, we add a date field
-    if (
-      !pathAndFieldArray.find((item: any) => item.path === "date") &&
-      schema.filename.startsWith("{year}-{month}-{day}") &&
-      ((schema.view?.fields && schema.view?.fields.includes("date")) ||
-        !schema.view?.fields)
-    ) {
-      pathAndFieldArray.push({
-        path: "date",
-        field: {
-          label: "Date",
-          name: "date",
-          type: "date",
-        },
-      });
-    }
-
-    return pathAndFieldArray;
-  }, [schema]);
+  const viewFields = useMemo(() => resolveCollectionColumns(schema), [schema]);
 
   const primaryField = useMemo(
     () => getPrimaryField(schema) ?? "name",
@@ -259,7 +219,7 @@ export function Collection({ name, path, request = fetch }: { name: string; path
   );
   const requestedFieldPaths = useMemo(() => {
     const paths = new Set<string>(["name", "path", primaryField]);
-    viewFields.forEach((item: any) => paths.add(item.path));
+    viewFields.forEach(column => column.sources.forEach(source => paths.add(`fields.${source.path}`)));
     presetRequestFields(schema.view?.sortPresets).forEach(path => paths.add(path));
     return Array.from(paths);
   }, [primaryField, viewFields, schema.view?.sortPresets]);
@@ -497,33 +457,18 @@ export function Collection({ name, path, request = fetch }: { name: string; path
     let tableColumns: any;
     tableColumns =
       viewFields
-        .map((pathAndField: any) => {
-          const path = pathAndField.path;
-          const field = pathAndField.field;
-          if (!field) return null;
-
+        .map(column => {
+          const path = column.id;
           return {
             id: path,
-            accessorKey: path,
-            accessorFn: (originalRow: any) =>
-              safeAccess(originalRow.fields, path),
-            header: field?.label ?? field.name,
+            accessorFn: (originalRow: any) => selectCollectionSource(column, source => safeAccess(originalRow.fields, source))?.value,
+            header: column.label,
+            enableSorting: !column.fallback,
             meta: {
-              className:
-                path === primaryField
-                  ? "truncate w-full min-w-[12rem] max-w-[1px]"
-                  : "",
+              className: path === primaryField ? "truncate w-full min-w-[12rem] max-w-[1px]" : "",
             },
-            cell: ({ cell, row }: { cell: any; row: any }) => {
-              const cellValue = cell.getValue();
-              const FieldComponent = viewComponents?.[field.type];
-              const CellView = FieldComponent ? (
-                <FieldComponent value={cellValue} field={field} />
-              ) : Array.isArray(cellValue) ? (
-                cellValue.join(", ")
-              ) : (
-                cellValue
-              );
+            cell: ({ row }: { row: any }) => {
+              const CellView = <CollectionCell column={column} valueAt={source => safeAccess(row.original.fields, source)} />;
               if (path === primaryField) {
                 return (
                   <Link
@@ -691,7 +636,7 @@ export function Collection({ name, path, request = fetch }: { name: string; path
       viewFields == null
         ? "name"
         : schema.view?.default?.sort ||
-          (viewFields.find((item: any) => item.field.name === "date") &&
+          (viewFields.find(column => column.id === "date") &&
             "date") ||
           primaryField;
 
@@ -944,8 +889,8 @@ export function Collection({ name, path, request = fetch }: { name: string; path
         <div className="min-w-0 truncate">{breadcrumbNode}</div>
         <CollectionHeaderActions
           addEntryHref={addEntryHref}
+          onReorder={!manualOrder && schema.view?.reorder ? () => setManualOrder(true) : undefined}
           actionNode={manualOrder ? undefined : <>
-            {schema.view?.reorder && <Button variant="outline" onClick={() => setManualOrder(true)}>Reihenfolge bearbeiten</Button>}
             {collectionActions.length > 0 ? (
               <RepoActionButtons
                 actions={collectionActions}

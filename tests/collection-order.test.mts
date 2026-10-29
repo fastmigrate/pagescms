@@ -23,7 +23,7 @@ test('unsupported scopes, constraints, fields and filename identities fail befor
  assert.throws(()=>reorderDefinition({...nested,fields:[{...nested.fields[0],required:false}]}));
 });
 test('draft moves are immutable, group scoped and dirty only from changed identity order',()=>{
- const baseline={head:'head',configSha:'config',field:'order',groups:[{id:'a',label:'A',entries:[{path:'a.json',sha:'a',label:'A',value:1},{path:'b.json',sha:'b',label:'B',value:2}]},{id:'b',label:'B',entries:[]}]};
+ const baseline={head:'head',configSha:'config',field:'order',columns:[],groups:[{id:'a',label:'A',entries:[{path:'a.json',sha:'a',label:'A',value:1,fields:{}},{path:'b.json',sha:'b',label:'B',value:2,fields:{}}]},{id:'b',label:'B',entries:[]}]};
  const draft=orderDraft(baseline);
  assert.equal(orderDirty(draft),false);
  const moved={...draft,groups:draft.groups.map(group=>group.id==='a'?{...group,paths:moveOrder(group.paths,0,1)}:group)};
