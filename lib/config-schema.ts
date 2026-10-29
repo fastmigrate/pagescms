@@ -7,6 +7,7 @@
 import { z } from "zod";
 import mergeWith from "lodash.mergewith";
 import { SortPresetSchema } from "./collection-sort";
+import { ReorderConfigSchema, reorderDefinition } from "./collection-order";
 import { fieldTypes } from "@/fields/registry";
 
 const ActionSchema = z
@@ -644,6 +645,7 @@ const ContentLeafSchema = z
             )
             .optional(),
           sortPresets: z.array(SortPresetSchema).min(1).optional(),
+          reorder: ReorderConfigSchema.optional(),
           search: z
             .array(
               z.string({
@@ -958,6 +960,11 @@ const ConfigSchema = z
       if (item.view?.default?.sortPreset) {
         if (!names.has(item.view.default.sortPreset)) ctx.addIssue({ code: 'custom', message: 'Unknown default sort preset.', path: [...path, 'view', 'default', 'sortPreset'] });
         if (item.view.default.sort != null || item.view.default.order != null) ctx.addIssue({ code: 'custom', message: 'Choose a default sort preset or a default column sort, not both.', path: [...path, 'view', 'default'] });
+      }
+
+      if (item.view?.reorder) {
+        try { reorderDefinition(item, resolveSortComponent); }
+        catch (error) { ctx.addIssue({ code: 'custom', message: error instanceof Error ? error.message : 'Invalid manual ordering.', path: [...path, 'view', 'reorder'] }); }
       }
 
       const duplicate = item.operations?.duplicate;
