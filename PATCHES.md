@@ -19,6 +19,7 @@ active FastMigrate release branch.
 | FM-009 | Active | Downstream development loop | Exercise production client components locally, run an authenticated sandbox stack, and verify exact candidate commits on an isolated VM before merge. | Upstream provides equivalent fixture, sandbox, and immutable candidate-verification workflows. |
 
 | FM-007 | Active | Configuration freshness | Check repository configuration during normal reads, update open editors automatically, preserve dirty drafts and reject saves made with obsolete configuration. | Upstream provides equivalent configuration synchronization and draft-preservation behavior. |
+| FM-012 | Candidate | Draft collection ordering | Edit complete numeric collection groups locally and save atomically, with equivalent entry-list movement buttons. | Upstream supports equivalent opt-in draft ordering and atomic conflict-safe writes. |
 | FM-011 | Active | Optional object defaults | Keep empty optional editor objects absent and apply child defaults only to populated optional objects before validation. | Upstream supports equivalent optional-object initialization and validation without changing duplicate-content preservation. |
 
 Each active patch must remain a separate commit, include proportionate tests,
@@ -316,3 +317,77 @@ The [1.7 upgrade guide](https://github.com/better-auth/better-auth/blob/v1.7.14/
 confirms that the account schema is unchanged from 1.6; no database migration
 or issuer backfill is required. Existing account identities and sessions are
 preserved. The remaining production advisories are low or moderate.
+
+## Draft collection ordering
+
+FM-012 adds opt-in `view.reorder` to flat JSON object collections with explicit
+`subfolders: false`. Select the numeric field and an existing named sort preset.
+Rules before that field define fixed groups. Rules after it break ties.
+
+```yaml
+view:
+  reorder:
+    field: sortOrder
+    sortPreset: website
+  sortPresets:
+    - name: website
+      label: Website order
+      fields:
+        - field: department
+          order: asc
+        - field: sortOrder
+          order: asc
+        - field: id
+          order: asc
+```
+
+The collection header exposes **Reihenfolge bearbeiten** in **Seitenaktionen**.
+Manual mode loads every collection member under fixed group headings. Dragging,
+keyboard movement and the up/down buttons change per-group local drafts. The
+Bereich filter retains hidden drafts; a single-group collection omits it. Select
+groups show configured value labels. Save submits all complete groups and writes
+changed numeric values in one Git commit. Unchanged groups retain their stored
+values, including sparse or absent ranks. Discard restores every loaded group.
+The endpoint validates all groups and prepares every numeric patch before any
+Git object creation. It rejects changed branch/config
+revisions and incomplete membership. It reads whole JSON documents and changes
+only the configured numeric value. Hidden and optional numeric leaves are
+supported. Nested object ancestors must be required and writable. Numeric
+min/max/step constraints apply to the complete group. The order field cannot
+drive filenames. Other formats, root lists, trees, and subfolders remain outside
+this initial scope.
+
+Browse and manual mode retain the same configured `view.fields` columns and
+field renderers. Manual tables add a drag handle and movement buttons. Numeric
+cells keep the loaded values until Save returns a fresh snapshot. Manual headers
+do not change the draft order. Wide tables scroll within the collection.
+
+`view.fields` retains string paths and also accepts named display fallback columns:
+
+```yaml
+view:
+  fields:
+    - title
+    - name: dateOrEvent
+      label: Datum / Zeitraum
+      fallback: [publishedDate, eventLabel]
+    - sortOrder
+```
+
+A fallback column displays the first populated source, using that source's field
+type and options. Null, undefined, empty strings and whitespace-only strings
+fall through. `false` and `0` remain values. If every source is empty, the cell
+is empty. Sources must be existing scalar leaves; nested objects and inherited
+components are supported. Lists, objects, unknown paths and prototype paths are
+rejected. Fallback names and sources must be unique within their respective
+lists. Mixed-source columns do not offer automatic column sorting.
+
+Order snapshots carry resolved column metadata and only the configured display
+source values from the same immutable configuration and content baseline.
+Display values use the normal field read transforms. They never enter the save
+payload. The endpoint rejects extra projection data and keeps the numeric-only
+JSON patch contract. No expression engine or stored computed field is added.
+
+Entry list up/down buttons use the same pre-submit flush, RHF move, and collapse
+state path as dragging. They keep the explicit Entry Save write boundary.
+See `tests/COLLECTION-ORDER-QA.md` for local checks and navigation limits.

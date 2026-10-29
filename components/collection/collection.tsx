@@ -21,7 +21,7 @@ import {
   normalizePath,
   sortFiles,
 } from "@/lib/utils/file";
-import { viewComponents, readFns } from "@/fields/registry";
+import { readFns } from "@/fields/registry";
 import { getSchemaActions } from "@/lib/actions";
 import {
   getSchemaByName,
@@ -33,7 +33,11 @@ import { requireApiSuccess } from "@/lib/api-client";
 import { EmptyCreate } from "@/components/empty-create";
 import { FileOptions } from "@/components/file/file-options";
 import { presetColumns, presetColumnId, presetRequestFields } from "@/lib/collection-sort";
+import { resolveCollectionColumns, selectCollectionSource } from "@/lib/collection-columns";
+import { CollectionCell } from "./collection-cell";
 import { CollectionTable } from "./collection-table";
+import { CollectionReorder } from "./collection-reorder";
+import type { OrderRequest } from "@/lib/collection-order";
 import { FolderCreate } from "@/components/folder-create";
 import { resolveContentOperations } from "@/lib/operations";
 import { useRepoHeader } from "@/components/repo/repo-header-context";
@@ -77,7 +81,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { EllipsisVertical, FolderPlus, Plus, Search } from "lucide-react";
+import { ChevronDown, EllipsisVertical, FolderPlus, Plus, Search } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -171,7 +175,8 @@ const CollectionHeaderActions = memo(function CollectionHeaderActions({
   );
 });
 
-export function Collection({ name, path }: { name: string; path?: string }) {
+export function Collection({ name, path, request = fetch }: { name: string; path?: string; request?: OrderRequest }) {
+  const [manualOrder, setManualOrder] = useState(false);
   const [tableSearch, setTableSearch] = useState("");
   const [data, setData] = useState<Record<string, any>[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -181,7 +186,7 @@ export function Collection({ name, path }: { name: string; path?: string }) {
   const pathname = usePathname();
   const router = useRouter();
 
-  const { config } = useConfig();
+  const { config, setUpdateBlocked } = useConfig();
   if (!config) throw new Error(`Configuration not found.`);
 
   const schema = useMemo(
@@ -196,55 +201,7 @@ export function Collection({ name, path }: { name: string; path?: string }) {
   const canRename = operations.rename;
   const canDelete = operations.delete;
 
-  const viewFields = useMemo(() => {
-    let pathAndFieldArray: any[] = [];
-    if (schema.fields) {
-      if (schema.view?.fields && schema.view?.fields.length > 0) {
-        // If we have a list of fields defined for the view
-        schema.view.fields.forEach((path: string) => {
-          const field = getFieldByPath(schema.fields, path);
-          if (field && !["object", "block"].includes(field.type))
-            pathAndFieldArray.push({ path: path, field: field });
-        });
-      } else {
-        pathAndFieldArray = schema.fields
-          .filter(
-            (field: any) =>
-              !["object", "block"].includes(field.type) && !field.hidden,
-          )
-          .map((field: any) => ({ path: field.name, field: field }));
-      }
-    } else {
-      pathAndFieldArray.push({
-        path: "name",
-        field: {
-          label: "Name",
-          name: "name",
-          type: "string",
-        },
-      });
-    }
-
-    // If the filename starts with {year}-{month}-{day} and date is listed in the
-    // view fields and is not an actual field, or if there are no fields, we add a date field
-    if (
-      !pathAndFieldArray.find((item: any) => item.path === "date") &&
-      schema.filename.startsWith("{year}-{month}-{day}") &&
-      ((schema.view?.fields && schema.view?.fields.includes("date")) ||
-        !schema.view?.fields)
-    ) {
-      pathAndFieldArray.push({
-        path: "date",
-        field: {
-          label: "Date",
-          name: "date",
-          type: "date",
-        },
-      });
-    }
-
-    return pathAndFieldArray;
-  }, [schema]);
+  const viewFields = useMemo(() => resolveCollectionColumns(schema), [schema]);
 
   const primaryField = useMemo(
     () => getPrimaryField(schema) ?? "name",
@@ -256,7 +213,7 @@ export function Collection({ name, path }: { name: string; path?: string }) {
   );
   const requestedFieldPaths = useMemo(() => {
     const paths = new Set<string>(["name", "path", primaryField]);
-    viewFields.forEach((item: any) => paths.add(item.path));
+    viewFields.forEach(column => column.sources.forEach(source => paths.add(`fields.${source.path}`)));
     presetRequestFields(schema.view?.sortPresets).forEach(path => paths.add(path));
     return Array.from(paths);
   }, [primaryField, viewFields, schema.view?.sortPresets]);
@@ -278,7 +235,7 @@ export function Collection({ name, path }: { name: string; path?: string }) {
 
   const fetchCollectionByUrl = useCallback(
     async (apiUrl: string): Promise<Record<string, any>[]> => {
-      const response = await fetch(apiUrl);
+      const response = await request(apiUrl);
       const result = await requireApiSuccess<any>(response, "Fetch failed");
 
       if (result.data.errors?.length) {
@@ -295,7 +252,7 @@ export function Collection({ name, path }: { name: string; path?: string }) {
         return a.name.localeCompare(b.name);
       });
     },
-    [schema.view?.foldersFirst],
+    [schema.view?.foldersFirst, request],
   );
 
   const collectionPath =
@@ -494,33 +451,18 @@ export function Collection({ name, path }: { name: string; path?: string }) {
     let tableColumns: any;
     tableColumns =
       viewFields
-        .map((pathAndField: any) => {
-          const path = pathAndField.path;
-          const field = pathAndField.field;
-          if (!field) return null;
-
+        .map(column => {
+          const path = column.id;
           return {
             id: path,
-            accessorKey: path,
-            accessorFn: (originalRow: any) =>
-              safeAccess(originalRow.fields, path),
-            header: field?.label ?? field.name,
+            accessorFn: (originalRow: any) => selectCollectionSource(column, source => safeAccess(originalRow.fields, source))?.value,
+            header: column.label,
+            enableSorting: !column.fallback,
             meta: {
-              className:
-                path === primaryField
-                  ? "truncate w-full min-w-[12rem] max-w-[1px]"
-                  : "",
+              className: path === primaryField ? "truncate w-full min-w-[12rem] max-w-[1px]" : "",
             },
-            cell: ({ cell, row }: { cell: any; row: any }) => {
-              const cellValue = cell.getValue();
-              const FieldComponent = viewComponents?.[field.type];
-              const CellView = FieldComponent ? (
-                <FieldComponent value={cellValue} field={field} />
-              ) : Array.isArray(cellValue) ? (
-                cellValue.join(", ")
-              ) : (
-                cellValue
-              );
+            cell: ({ row }: { row: any }) => {
+              const CellView = <CollectionCell column={column} valueAt={source => safeAccess(row.original.fields, source)} />;
               if (path === primaryField) {
                 return (
                   <Link
@@ -688,7 +630,7 @@ export function Collection({ name, path }: { name: string; path?: string }) {
       viewFields == null
         ? "name"
         : schema.view?.default?.sort ||
-          (viewFields.find((item: any) => item.field.name === "date") &&
+          (viewFields.find(column => column.id === "date") &&
             "date") ||
           primaryField;
 
@@ -941,8 +883,8 @@ export function Collection({ name, path }: { name: string; path?: string }) {
         <div className="min-w-0 truncate">{breadcrumbNode}</div>
         <CollectionHeaderActions
           addEntryHref={addEntryHref}
-          actionNode={
-            collectionActions.length > 0 ? (
+          actionNode={manualOrder ? undefined : <>
+            {collectionActions.length > 0 ? (
               <RepoActionButtons
                 actions={collectionActions}
                 owner={config.owner}
@@ -957,8 +899,8 @@ export function Collection({ name, path }: { name: string; path?: string }) {
                   format: schema.format ?? null,
                 }}
               />
-            ) : undefined
-          }
+            ) : null}
+          </>}
           collectionPath={collectionPath}
           name={name}
           showAddEntry={canCreate}
@@ -969,6 +911,7 @@ export function Collection({ name, path }: { name: string; path?: string }) {
       </div>
     ),
     [
+      manualOrder,
       addEntryHref,
       breadcrumbNode,
       collectionActions,
@@ -988,9 +931,8 @@ export function Collection({ name, path }: { name: string; path?: string }) {
     ],
   );
 
-  useRepoHeader({
-    header: headerNode,
-  });
+  const orderHeader = useMemo(() => <span className="font-semibold">{schema.label || schema.name} · Reihenfolge</span>, [schema.label, schema.name]);
+  useRepoHeader({ header: manualOrder ? orderHeader : headerNode });
 
   const isLoading =
     !swrCollectionData && !swrCollectionError && data.length === 0;
@@ -1039,6 +981,16 @@ export function Collection({ name, path }: { name: string; path?: string }) {
       setSearch={setTableSearch}
       initialState={initialState}
       sortPresets={schema.view?.sortPresets}
+      toolbarActions={schema.view?.reorder ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" aria-label="Seitenaktionen">Aktionen<ChevronDown /></Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={() => setManualOrder(true)}>Reihenfolge bearbeiten</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : undefined}
       onExpand={handleExpand}
       pathname={pathname}
       path={path || schema.path}
@@ -1047,5 +999,12 @@ export function Collection({ name, path }: { name: string; path?: string }) {
     />
   );
 
-  return <div className="min-w-0 flex flex-col space-y-6">{contentNode}</div>;
+  return <div className="min-w-0 flex flex-col space-y-6">{manualOrder ? <CollectionReorder
+    key={`${config.sha}:${name}`}
+    url={`/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/collections/${encodeURIComponent(name)}/order`}
+    request={request}
+    setUpdateBlocked={setUpdateBlocked}
+    onClose={() => setManualOrder(false)}
+    onSaved={() => { void mutate(rootCollectionKey); }}
+  /> : contentNode}</div>;
 }

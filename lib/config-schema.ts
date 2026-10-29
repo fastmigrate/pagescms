@@ -7,6 +7,7 @@
 import { z } from "zod";
 import mergeWith from "lodash.mergewith";
 import { SortPresetSchema } from "./collection-sort";
+import { ReorderConfigSchema, reorderDefinition } from "./collection-order";
 import { fieldTypes } from "@/fields/registry";
 
 const ActionSchema = z
@@ -619,12 +620,15 @@ const ContentLeafSchema = z
             .optional(),
           fields: z
             .array(
-              z.string({
-                message: "Entries in the 'fields' array must be strings.",
-              }),
-              {
-                message: "'fields' must be an array of strings.",
-              },
+              z.union([
+                z.string(),
+                z.object({
+                  name: z.string().regex(/^[a-zA-Z0-9_-]+$/),
+                  label: z.string().trim().min(1),
+                  fallback: z.array(z.string().regex(/^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*$/)
+                    .refine(value => !value.split(".").some(part => ["__proto__", "prototype", "constructor"].includes(part)))).min(1),
+                }).strict(),
+              ]),
             )
             .optional(),
           primary: z
@@ -644,6 +648,7 @@ const ContentLeafSchema = z
             )
             .optional(),
           sortPresets: z.array(SortPresetSchema).min(1).optional(),
+          reorder: ReorderConfigSchema.optional(),
           search: z
             .array(
               z.string({
@@ -936,6 +941,23 @@ const ConfigSchema = z
         }
         return undefined;
       };
+      const displayNames = new Set<string>();
+      item.view?.fields?.forEach((column: any, index: number) => {
+        if (typeof column === "string") return;
+        const columnPath = [...path, "view", "fields", index];
+        if (item.type !== "collection") ctx.addIssue({ code: "custom", message: "Fallback columns require a collection.", path: columnPath });
+        if (displayNames.has(column.name)) ctx.addIssue({ code: "custom", message: "Fallback column names must be unique.", path: [...columnPath, "name"] });
+        displayNames.add(column.name);
+        const sources = new Set<string>();
+        column.fallback.forEach((source: string, sourceIndex: number) => {
+          const field = findField(source);
+          if (!field || !["string", "text", "number", "boolean", "date", "select", "uuid"].includes(field.type)) {
+            ctx.addIssue({ code: "custom", message: "Fallback columns must reference an existing scalar field.", path: [...columnPath, "fallback", sourceIndex] });
+          }
+          if (sources.has(source)) ctx.addIssue({ code: "custom", message: "Fallback sources must be unique.", path: [...columnPath, "fallback", sourceIndex] });
+          sources.add(source);
+        });
+      });
       presets.forEach((preset: any, index: number) => {
         const presetPath = [...path, 'view', 'sortPresets', index];
         if (item.type !== 'collection') ctx.addIssue({ code: 'custom', message: 'Sort presets require a collection.', path: presetPath });
@@ -958,6 +980,11 @@ const ConfigSchema = z
       if (item.view?.default?.sortPreset) {
         if (!names.has(item.view.default.sortPreset)) ctx.addIssue({ code: 'custom', message: 'Unknown default sort preset.', path: [...path, 'view', 'default', 'sortPreset'] });
         if (item.view.default.sort != null || item.view.default.order != null) ctx.addIssue({ code: 'custom', message: 'Choose a default sort preset or a default column sort, not both.', path: [...path, 'view', 'default'] });
+      }
+
+      if (item.view?.reorder) {
+        try { reorderDefinition(item, resolveSortComponent); }
+        catch (error) { ctx.addIssue({ code: 'custom', message: error instanceof Error ? error.message : 'Invalid manual ordering.', path: [...path, 'view', 'reorder'] }); }
       }
 
       const duplicate = item.operations?.duplicate;

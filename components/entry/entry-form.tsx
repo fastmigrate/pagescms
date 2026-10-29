@@ -85,6 +85,8 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   ChevronRight,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { interpolate } from "@/lib/schema";
@@ -227,6 +229,8 @@ const ListItemRow = memo(function ListItemRow({
   onRequestRemove,
   onRemoveConfirm,
   onPendingRemoveChange,
+  count,
+  onMove,
 }: {
   id: string;
   field: FieldWithReadonlyMeta;
@@ -241,6 +245,8 @@ const ListItemRow = memo(function ListItemRow({
   onRequestRemove: (index: number) => void;
   onRemoveConfirm: (index: number) => void;
   onPendingRemoveChange: (index: number, open: boolean) => void;
+  count: number;
+  onMove: (from: number, to: number) => Promise<void>;
 }) {
   const isReadonly = Boolean(field.readonly);
   return (
@@ -258,6 +264,10 @@ const ListItemRow = memo(function ListItemRow({
           index={index}
         />
       </div>
+      {!isReadonly && <div className="flex flex-col self-start">
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move item ${index + 1} up`} disabled={index === 0} onClick={() => void onMove(index, index - 1)}><ArrowUp /></Button>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move item ${index + 1} down`} disabled={index === count - 1} onClick={() => void onMove(index, index + 1)}><ArrowDown /></Button>
+      </div>}
       {!isReadonly && (
         <Tooltip>
           <AlertDialog
@@ -370,19 +380,17 @@ const ListField = ({
     );
   }, []);
 
-  const handleDragEnd = async (event: DragEndEvent) => {
-    if (isReadonly) return;
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const oldIndex = arrayFields.findIndex((item) => item.id === active.id);
-    const newIndex = arrayFields.findIndex((item) => item.id === over.id);
-
-    if (oldIndex < 0 || newIndex < 0) return;
-
+  const moveItem = useCallback(async (oldIndex: number, newIndex: number) => {
+    if (isReadonly || oldIndex < 0 || newIndex < 0 || oldIndex >= arrayFields.length || newIndex >= arrayFields.length || oldIndex === newIndex) return;
     await runBeforeSubmitHooks?.();
     setOpenStates((prev) => arrayMove(prev, oldIndex, newIndex));
     move(oldIndex, newIndex);
+  }, [arrayFields.length, isReadonly, move, runBeforeSubmitHooks]);
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    await moveItem(arrayFields.findIndex((item) => item.id === active.id), arrayFields.findIndex((item) => item.id === over.id));
   };
 
   const addItem = async () => {
@@ -522,6 +530,8 @@ const ListField = ({
                     field={field}
                     fieldName={fieldName}
                     index={index}
+                    count={arrayFields.length}
+                    onMove={moveItem}
                     isOpen={openStates[index]}
                     defaultOpen={defaultOpen}
                     isPendingRemove={pendingRemoveIndex === index}

@@ -1,3 +1,4 @@
+import * as reorder from "../lib/collection-order.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -18,7 +19,7 @@ const loadedModule = { exports: {} as any };
 new Function("require", "module", "exports", code)(
   (name: string) => name === "@/fields/registry"
     ? { fieldTypes: new Set(["string", "text", "boolean", "number", "object"]) }
-    : name === "./collection-sort"
+    : name === "./collection-order" ? reorder : name === "./collection-sort"
       ? sort
       : require(name),
   loadedModule,

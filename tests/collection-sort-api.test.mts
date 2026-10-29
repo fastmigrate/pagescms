@@ -112,3 +112,21 @@ test('explicit date order uses the same read transform as collection values', as
     assert.deepEqual(preset.fields[0].values,dates,'stored configuration is not mutated');
   }
 });
+
+import { resolveCollectionColumns, selectCollectionSource } from '../lib/collection-columns.ts';
+
+test('browse reads fallback source fields through nested component transforms and reserved path prefixes', async () => {
+  const f = fixture({ components: { metadata: { type: 'object', fields: [{ name: 'date', component: 'date' }] }, date: { type: 'date', options: { format: 'dd.MM.yyyy' } } }, content: [{ name: 'works', type: 'collection', path: 'content/works', format: 'json', filename: '{primary}.json', fields: [
+    { name: 'title', type: 'string' }, { name: 'meta', component: 'metadata' }, { name: 'event', type: 'string' }, { name: 'path', type: 'number' },
+  ], view: { fields: ['title', { name: 'when', label: 'Date or event', fallback: ['meta.date', 'event'] }, 'path'] } }] });
+  const columns = resolveCollectionColumns(f.schema);
+  f.setEntries([{ title: 'Dated', meta: { date: '29.10.2026', omit: 'private' }, event: 'Autumn', path: 0 }, { title: 'Event', meta: { date: '' }, event: 'Autumn' }, { title: 'Empty', event: '   ' }]);
+  const fields = ['path', ...columns.flatMap(column => column.sources.map(source => `fields.${source.path}`))];
+  const result = await (await f.request({ fields: fields.join(',') })).json();
+  const rows = result.data.contents;
+  assert.deepEqual(rows[0].fields, { title: 'Dated', meta: { date: '2026-10-29' }, event: 'Autumn', path: 0 });
+  const valueAt = (row: any, path: string) => path.split('.').reduce((value, key) => value?.[key], row.fields);
+  assert.equal(selectCollectionSource(columns[1], path => valueAt(rows[0], path))?.source.field.type, 'date');
+  assert.equal(selectCollectionSource(columns[1], path => valueAt(rows[1], path))?.value, 'Autumn');
+  assert.equal(selectCollectionSource(columns[1], path => valueAt(rows[2], path)), undefined);
+});

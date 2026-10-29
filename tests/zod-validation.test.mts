@@ -1,3 +1,4 @@
+import * as reorder from "../lib/collection-order.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -34,7 +35,7 @@ const registry = {
   fieldTypes: new Set([...Object.keys(fields), "object", "block"]),
 };
 const { generateZodSchema } = load("lib/schema.ts", { "@/fields/registry": registry });
-const configSchema = load("lib/config-schema.ts", { "@/fields/registry": registry, "./collection-sort": sort });
+const configSchema = load("lib/config-schema.ts", { "@/fields/registry": registry, "./collection-sort": sort, "./collection-order": reorder });
 const { parseAndValidateConfig } = load("lib/config.ts", {
   "@/lib/config-schema": configSchema, "@/lib/utils/file": file,
 });

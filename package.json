@@ -72,6 +72,7 @@
     "drizzle-orm": "^0.45.1",
     "input-otp": "^1.4.2",
     "joplin-turndown-plugin-gfm": "^1.0.12",
+    "jsonc-parser": "3.3.1",
     "lodash.merge": "^4.6.2",
     "lodash.mergewith": "^4.6.2",
     "lucide-react": "^0.563.0",

@@ -1,3 +1,4 @@
+import * as reorder from "../lib/collection-order.ts";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -8,7 +9,7 @@ const require = createRequire(import.meta.url);
 const source = readFileSync(new URL('../lib/config-schema.ts',import.meta.url),'utf8');
 const code = ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
 const loadedModule = {exports:{} as any};
-new Function('require','module','exports',code)((name:string)=>name==='@/fields/registry'?{fieldTypes:new Set(['string','number','object','uuid','select','boolean','date'])}:name==='./collection-sort'?sort:require(name),loadedModule,loadedModule.exports);
+new Function('require','module','exports',code)((name:string)=>name==='@/fields/registry'?{fieldTypes:new Set(['string','number','object','uuid','select','boolean','date'])}:name==='./collection-order'?reorder:name==='./collection-sort'?sort:require(name),loadedModule,loadedModule.exports);
 const {ConfigSchema} = loadedModule.exports;
 const preset = {name:'website',label:'Website order',fields:[{field:'year',order:'desc'},{field:'id',order:'asc'}]};
 const entry = {name:'entries',type:'collection',path:'content',fields:[{name:'year',type:'number'},{name:'id',type:'uuid',hidden:true}],view:{fields:['year'],sortPresets:[preset],default:{sortPreset:'website'}}};
