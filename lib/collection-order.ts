@@ -8,9 +8,11 @@ export const ReorderConfigSchema = z.object({
 export type OrderEntry = Readonly<{ path: string; sha: string; label: string; value: number | null }>;
 export type OrderGroup = Readonly<{ id: string; label: string; entries: readonly OrderEntry[] }>;
 export type OrderSnapshot = Readonly<{ head: string; configSha: string; field: string; groups: readonly OrderGroup[] }>;
-export type OrderDraft = { baseline: OrderSnapshot; groupId: string; paths: string[]; error?: string };
+export type OrderGroupDraft = { id: string; paths: string[] };
+export type OrderDraft = { baseline: OrderSnapshot; groups: OrderGroupDraft[]; error?: string };
+export type OrderFilter = { kind: 'all' } | { kind: 'group'; id: string };
 export type OrderState = { status: 'loading' } | { status: 'load-error'; error: string } | ({ status: 'ready' | 'saving' } & OrderDraft);
-export type OrderSave = { expectedHead: string; configSha: string; groupId: string; baseline: { path: string; sha: string }[]; paths: string[] };
+export type OrderSave = { expectedHead: string; configSha: string; groups: { id: string; baseline: { path: string; sha: string }[]; paths: string[] }[] };
 export type OrderRequest = (url: string, init?: RequestInit) => Promise<Response>;
 export type ReorderDefinition = { field: string; preset: SortPreset; groupFields: string[]; start: number; step: number; min?: number; max?: number };
 
@@ -60,8 +62,10 @@ export function orderValues(definition: ReorderDefinition, count: number): numbe
   });
 }
 export function orderDirty(draft: OrderDraft): boolean {
-  const entries = draft.baseline.groups.find(group => group.id === draft.groupId)?.entries ?? [];
-  return entries.length !== draft.paths.length || entries.some((entry, index) => entry.path !== draft.paths[index]);
+  return draft.groups.some(group => {
+    const entries = draft.baseline.groups.find(item => item.id === group.id)?.entries ?? [];
+    return entries.length !== group.paths.length || entries.some((entry, index) => entry.path !== group.paths[index]);
+  });
 }
 export function moveOrder(paths: readonly string[], from: number, to: number): string[] {
   if (from < 0 || to < 0 || from >= paths.length || to >= paths.length || from === to) return [...paths];
@@ -70,9 +74,17 @@ export function moveOrder(paths: readonly string[], from: number, to: number): s
   result.splice(to, 0, path);
   return result;
 }
-export function orderDraft(baseline: OrderSnapshot, groupId = baseline.groups[0]?.id ?? ''): OrderDraft {
-  return { baseline, groupId, paths: baseline.groups.find(group => group.id === groupId)?.entries.map(entry => entry.path) ?? [] };
+export function orderDraft(baseline: OrderSnapshot): OrderDraft {
+  return { baseline, groups: baseline.groups.map(group => ({ id: group.id, paths: group.entries.map(entry => entry.path) })) };
 }
 export function orderPayload(draft: OrderDraft): OrderSave {
-  return { expectedHead: draft.baseline.head, configSha: draft.baseline.configSha, groupId: draft.groupId, baseline: (draft.baseline.groups.find(group => group.id === draft.groupId)?.entries ?? []).map(({ path, sha }) => ({ path, sha })), paths: draft.paths };
+  return {
+    expectedHead: draft.baseline.head,
+    configSha: draft.baseline.configSha,
+    groups: draft.groups.map(group => ({
+      id: group.id,
+      baseline: (draft.baseline.groups.find(item => item.id === group.id)?.entries ?? []).map(({ path, sha }) => ({ path, sha })),
+      paths: group.paths,
+    })),
+  };
 }

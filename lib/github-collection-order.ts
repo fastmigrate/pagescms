@@ -42,9 +42,11 @@ const sha = z.string().regex(/^[a-f0-9]{40}$/);
 const OrderSaveSchema = z.object({
   expectedHead: sha,
   configSha: sha,
-  groupId: z.string().min(1),
-  baseline: z.array(z.object({ path: z.string().min(1), sha }).strict()),
-  paths: z.array(z.string().min(1)),
+  groups: z.array(z.object({
+    id: z.string().min(1),
+    baseline: z.array(z.object({ path: z.string().min(1), sha }).strict()),
+    paths: z.array(z.string().min(1)),
+  }).strict()),
 }).strict();
 
 function assertPath(path: string, allowRoot = false) {
@@ -113,7 +115,15 @@ function snapshotFor(loaded: Omit<LoadedOrder, "snapshot" | "treeSha">): OrderSn
     let group = groups.get(id);
     if (!group) {
       const label = values.length
-        ? values.map((value, index) => `${getFieldByPath(schema.fields, definition.groupFields[index])?.label || definition.groupFields[index]}: ${value ?? "(empty)"}`).join(" / ")
+        ? values.map((value, index) => {
+          const path = definition.groupFields[index];
+          const field = getFieldByPath(schema.fields, path);
+          const option = field?.type === "select" && Array.isArray(field.options?.values)
+            ? field.options.values.find((item: any) => String(typeof item === "object" ? item.value ?? item.name ?? "" : item) === String(value)) : undefined;
+          const label = option && typeof option === "object" ? option.label ?? option.value ?? option.name : value;
+          const valueLabel = String(label ?? "(empty)");
+          return values.length === 1 ? valueLabel : `${field?.label || path}: ${valueLabel}`;
+        }).join(" / ")
         : "All entries";
       group = { id, label, entries: [] };
       groups.set(id, group);
@@ -206,30 +216,36 @@ export async function saveCollectionOrder(options: OrderContext, input: unknown)
   const parsed = OrderSaveSchema.safeParse(input);
   if (!parsed.success) throw createHttpError("Invalid collection order request.", 400);
   const data = parsed.data;
-  for (const path of [...data.paths, ...data.baseline.map(entry => entry.path)]) assertPath(path);
-  if (new Set(data.paths).size !== data.paths.length || new Set(data.baseline.map(entry => entry.path)).size !== data.baseline.length) throw createHttpError("Collection order paths must be unique.", 400);
+  if (new Set(data.groups.map(group => group.id)).size !== data.groups.length) throw createHttpError("Collection order groups must be unique.", 400);
+  for (const group of data.groups) {
+    for (const path of [...group.paths, ...group.baseline.map(entry => entry.path)]) assertPath(path);
+    if (new Set(group.paths).size !== group.paths.length || new Set(group.baseline.map(entry => entry.path)).size !== group.baseline.length) throw createHttpError("Collection order paths must be unique.", 400);
+  }
   const octokit = createOctokitInstance(options.token, { retry: { doNotRetry: [409, 422] } });
   const loaded = await loadOrder(options, octokit, data.expectedHead);
   if (data.configSha !== loaded.configSha) throw createHttpError("Configuration changed. Reload the order before saving.", 409);
-  const group = loaded.snapshot.groups.find(group => group.id === data.groupId);
-  if (!group) throw createHttpError("The complete order group is no longer available. Reload the order before saving.", 409);
-  const baseline = new Map(data.baseline.map(entry => [entry.path, entry.sha]));
-  const paths = new Set(data.paths);
-  if (group.entries.length !== baseline.size || group.entries.length !== paths.size
-    || group.entries.some(entry => baseline.get(entry.path) !== entry.sha || !paths.has(entry.path))) {
-    throw createHttpError("The complete order group or its files have changed. Reload the order before saving.", 409);
-  }
-  if (group.entries.every((entry, index) => entry.path === data.paths[index])) return loaded.snapshot;
-  const values = orderValues(loaded.definition, data.paths.length);
+  if (data.groups.length !== loaded.snapshot.groups.length) throw createHttpError("The complete collection groups have changed. Reload the order before saving.", 409);
   const documents = new Map(loaded.documents.map(document => [document.path, document]));
-  const changes = data.paths.flatMap((path, index) => {
-    const document = documents.get(path)!;
-    if (valueAt(document.content, loaded.definition.field) === values[index]) return [];
-    const text = applyEdits(document.source, modify(document.source, loaded.definition.field.split("."), values[index], {}));
-    const content = parse(text, { format: "json" });
-    if (valueAt(content, loaded.definition.field) !== values[index]) throw createHttpError(`Ambiguous order field in "${path}". Remove duplicate JSON keys before ordering.`, 400);
-    if (Buffer.byteLength(text) > MAX_FILE_REQUEST_BYTES) throw createHttpError(`File "${path}" exceeds the supported size.`, 413);
-    return [{ ...document, content, source: text, text }];
+  const changes = data.groups.flatMap(draft => {
+    const group = loaded.snapshot.groups.find(group => group.id === draft.id);
+    if (!group) throw createHttpError("The complete order group is no longer available. Reload the order before saving.", 409);
+    const baseline = new Map(draft.baseline.map(entry => [entry.path, entry.sha]));
+    const paths = new Set(draft.paths);
+    if (group.entries.length !== baseline.size || group.entries.length !== paths.size
+      || group.entries.some(entry => baseline.get(entry.path) !== entry.sha || !paths.has(entry.path))) {
+      throw createHttpError("The complete order group or its files have changed. Reload the order before saving.", 409);
+    }
+    if (group.entries.every((entry, index) => entry.path === draft.paths[index])) return [];
+    const values = orderValues(loaded.definition, draft.paths.length);
+    return draft.paths.flatMap((path, index) => {
+      const document = documents.get(path)!;
+      if (valueAt(document.content, loaded.definition.field) === values[index]) return [];
+      const text = applyEdits(document.source, modify(document.source, loaded.definition.field.split("."), values[index], {}));
+      const content = parse(text, { format: "json" });
+      if (valueAt(content, loaded.definition.field) !== values[index]) throw createHttpError(`Ambiguous order field in "${path}". Remove duplicate JSON keys before ordering.`, 400);
+      if (Buffer.byteLength(text) > MAX_FILE_REQUEST_BYTES) throw createHttpError(`File "${path}" exceeds the supported size.`, 413);
+      return [{ ...document, content, source: text, text }];
+    });
   });
   if (!changes.length) return loaded.snapshot;
   const { owner, repo, branch, user } = options;

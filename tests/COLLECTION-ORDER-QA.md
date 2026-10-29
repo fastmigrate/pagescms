@@ -10,8 +10,21 @@ Use **Reihenfolge bearbeiten** to load complete groups. Move entries with a drag
 handle, keyboard, or the up/down buttons. Movement changes the draft only.
 Check the saved content and save counter before and after explicit Save.
 Discard restores saved order. Delayed saves disable movement and repeated saves.
-Errors and conflicts keep the draft for inspection or retry. Group switches and
-closing manual mode ask before discarding unsaved changes.
+Errors and conflicts keep every draft and the active filter for inspection or
+retry. Multi-group collections start with all entries under separate group
+headings. The Bereich filter changes visibility without discarding any draft.
+Save includes every complete group in one request and commits changed groups
+atomically. Discard restores every group, including hidden drafts. Closing
+manual mode asks before discarding unsaved changes. The sticky action bar keeps
+Save and the global dirty status available in long lists. A successful save
+shows explicit confirmation and retains the active filter. Rows show titles and
+positions without technical paths or stored numeric values.
+
+Open `/dev/fixtures/collection-reorder?single=1` for the single-group case.
+There is no Bereich filter or redundant group heading. Select labels come from
+the server snapshot. A single grouping field uses its value label; several
+fields retain field-qualified labels. Each group owns its own drag context so
+movement cannot cross group boundaries.
 
 The component warns on document unload and intercepts ordinary same-tab link
 clicks while dirty. It does not rewrite browser history. Browser Back can leave

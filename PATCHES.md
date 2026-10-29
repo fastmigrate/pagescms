@@ -341,9 +341,14 @@ view:
           order: asc
 ```
 
-Manual mode loads every member of a complete group. Dragging and the up/down
-buttons change a local draft. Save writes numeric values in one Git commit.
-Discard restores the loaded order. The endpoint rejects changed branch/config
+Manual mode loads every collection member under fixed group headings. Dragging,
+keyboard movement and the up/down buttons change per-group local drafts. The
+Bereich filter retains hidden drafts; a single-group collection omits it. Select
+groups show configured value labels. Save submits all complete groups and writes
+changed numeric values in one Git commit. Unchanged groups retain their stored
+values, including sparse or absent ranks. Discard restores every loaded group.
+The endpoint validates all groups and prepares every numeric patch before any
+Git object creation. It rejects changed branch/config
 revisions and incomplete membership. It reads whole JSON documents and changes
 only the configured numeric value. Hidden and optional numeric leaves are
 supported. Nested object ancestors must be required and writable. Numeric

@@ -196,8 +196,7 @@ function fixture(options: Options = {}) {
     post: (input: unknown, headers?: Record<string, string>) => route.POST(request(input, headers), params()),
     payload: async (paths?: string[], groupIndex = 0) => {
       const snapshot = await service.readCollectionOrder(context);
-      const group = snapshot.groups[groupIndex];
-      return { expectedHead: snapshot.head, configSha: snapshot.configSha, groupId: group.id, baseline: group.entries.map(({ path, sha }: any) => ({ path, sha })), paths: paths ?? group.entries.map((entry: any) => entry.path) };
+      return { expectedHead: snapshot.head, configSha: snapshot.configSha, groups: snapshot.groups.map((group: any, index: number) => ({ id: group.id, baseline: group.entries.map(({ path, sha }: any) => ({ path, sha })), paths: index === groupIndex && paths ? paths : group.entries.map((entry: any) => entry.path) })) };
     },
     value: (path: string) => JSON.parse(files.get(path)!.content),
     advance: () => { head = hash("unrelated-commit"); },
@@ -205,6 +204,10 @@ function fixture(options: Options = {}) {
     get head() { return head; }, get writes() { return writes; }, get refReads() { return refReads; },
     get updated() { return updated; }, get cleared() { return cleared; },
   };
+}
+
+function changeGroup(input: any, patch: any, index = 0) {
+  return { ...input, groups: input.groups.map((group: any, current: number) => current === index ? { ...group, ...patch } : group) };
 }
 
 test("order snapshot includes the complete group beyond normal pagination and uses preset tie breakers", async () => {
@@ -262,12 +265,12 @@ test("stale head, configuration, file revisions and partial or cross-group membe
   const cases = [
     (input: any) => ({ ...input, expectedHead: hash("stale-head") }),
     (input: any) => ({ ...input, configSha: hash("stale-config") }),
-    (input: any) => ({ ...input, groupId: "missing" }),
-    (input: any) => ({ ...input, baseline: input.baseline.slice(1) }),
-    (input: any) => ({ ...input, baseline: [{ ...input.baseline[0], sha: hash("stale-file") }, input.baseline[1]] }),
-    (input: any) => ({ ...input, paths: input.paths.slice(1) }),
-    (input: any) => ({ ...input, paths: ["content/jobs/c.json", "content/jobs/a.json"] }),
-    (input: any) => ({ ...input, paths: ["content/jobs-other/b.json", "content/jobs/a.json"] }),
+    (input: any) => changeGroup(input, { id: "missing" }),
+    (input: any) => changeGroup(input, { baseline: input.groups[0].baseline.slice(1) }),
+    (input: any) => changeGroup(input, { baseline: [{ ...input.groups[0].baseline[0], sha: hash("stale-file") }, input.groups[0].baseline[1]] }),
+    (input: any) => changeGroup(input, { paths: input.groups[0].paths.slice(1) }),
+    (input: any) => changeGroup(input, { paths: ["content/jobs/c.json", "content/jobs/a.json"] }),
+    (input: any) => changeGroup(input, { paths: ["content/jobs-other/b.json", "content/jobs/a.json"] }),
   ];
   for (const change of cases) {
     const f = fixture();
@@ -285,11 +288,11 @@ test("stale head, configuration, file revisions and partial or cross-group membe
 
 test("duplicate paths, traversal, missing revisions and unsupported request fields fail before writes", async () => {
   for (const change of [
-    (input: any) => ({ ...input, baseline: [input.baseline[0], input.baseline[0]] }),
-    (input: any) => ({ ...input, paths: [input.paths[0], input.paths[0]] }),
-    (input: any) => ({ ...input, paths: ["content/jobs/../b.json", input.paths[1]] }),
-    (input: any) => ({ ...input, paths: ["/content/jobs/b.json", input.paths[1]] }),
-    (input: any) => ({ ...input, baseline: [{ path: input.paths[0] }] }),
+    (input: any) => changeGroup(input, { baseline: [input.groups[0].baseline[0], input.groups[0].baseline[0]] }),
+    (input: any) => changeGroup(input, { paths: [input.groups[0].paths[0], input.groups[0].paths[0]] }),
+    (input: any) => changeGroup(input, { paths: ["content/jobs/../b.json", input.groups[0].paths[1]] }),
+    (input: any) => changeGroup(input, { paths: ["/content/jobs/b.json", input.groups[0].paths[1]] }),
+    (input: any) => changeGroup(input, { baseline: [{ path: input.groups[0].paths[0] }] }),
     (input: any) => ({ ...input, field: "arbitrary.path" }),
     (input: any) => ({ ...input, content: {} }),
   ]) {
@@ -314,7 +317,7 @@ test("root-level membership excludes sibling paths, subfolders, excluded names a
       "content/jobs-sibling/other.json": "invalid sibling JSON",
     } });
     const input = await f.payload([`${prefix}a.json`, `${prefix}b.json`]);
-    assert.equal(input.baseline.length, 2);
+    assert.equal(input.groups[0].baseline.length, 2);
     await f.save(input);
     assert.equal(f.createdTrees[0].tree.length, 2);
     assert.equal(f.value(`${prefix}a.json`).sortOrder, 1);
@@ -497,7 +500,7 @@ test("reserved media metadata cannot enter a matching order scope unless explici
   const documents = { "content/jobs/a.json": { id: "a", title: "Alpha", version: 2 }, "content/jobs/metadata.json": { version: 1, assets: {} } };
   const f = fixture({ config, documents });
   await assert.rejects(f.read(), (error: any) => error.status === 400 && /reserved|metadata/i.test(error.message));
-  await assert.rejects(f.save({ expectedHead: baseHead, configSha: f.files.get(".pages.yml")!.sha, groupId: "[]", baseline: [], paths: [] }), (error: any) => error.status === 400);
+  await assert.rejects(f.save({ expectedHead: baseHead, configSha: f.files.get(".pages.yml")!.sha, groups: [{ id: "[]", baseline: [], paths: [] }] }), (error: any) => error.status === 400);
   assert.equal(f.writes, 0);
   config.content[0].exclude = ["metadata.json"];
   const excluded = fixture({ config, documents });
@@ -529,4 +532,54 @@ test("duplicate order keys cannot report a successful numeric edit of a shadowed
   } });
   await assert.rejects(f.save(await f.payload(["content/jobs/b.json", "content/jobs/a.json"])), (error: any) => error.status === 400 && /duplicate JSON keys/i.test(error.message));
   assert.equal(f.writes, 0);
+});
+
+test("two dirty groups are saved in one commit and unchanged sparse groups retain their exact bytes", async () => {
+  const documents = { ...defaultDocuments(),
+    "content/jobs/d.json": { id: "d", title: "Second B", department: "b", sortOrder: 100 },
+    "content/jobs/e.json": '{ "id":"e", "title":"Sparse", "department":"c", "sortOrder":900, "future":1234567890123456789 }',
+    "content/jobs/f.json": '{"id":"f","department":"c"}',
+  };
+  const f = fixture({ documents });
+  const originalSparse = ["content/jobs/e.json", "content/jobs/f.json"].map(path => ({ path, ...f.files.get(path)! }));
+  const input = await f.payload(["content/jobs/b.json", "content/jobs/a.json"]);
+  input.groups[1].paths.reverse();
+  const result = await f.save(input);
+  assert.equal(f.createdCommits.length, 1);
+  assert.equal(f.refUpdates.length, 1);
+  assert.equal(f.createdBlobs.length, 4);
+  assert.deepEqual(result.groups.slice(0, 2).map((group: any) => group.entries.map((entry: any) => entry.path)), [input.groups[0].paths, input.groups[1].paths]);
+  for (const { path, ...original } of originalSparse) assert.deepEqual(f.files.get(path), original);
+});
+
+test("invalid second group rejects all changes before any Git object is created", async () => {
+  for (const corrupt of [
+    (input: any) => changeGroup(input, { paths: [] }, 1),
+    (input: any) => changeGroup(input, { baseline: [] }, 1),
+    (input: any) => ({ ...input, groups: input.groups.slice(0, 1) }),
+    (input: any) => ({ ...input, groups: [input.groups[0], input.groups[0]] }),
+  ]) {
+    const f = fixture();
+    await assert.rejects(f.save(corrupt(await f.payload(["content/jobs/b.json", "content/jobs/a.json"]))));
+    assert.equal(f.writes, 0);
+  }
+  const f = fixture({ documents: { ...defaultDocuments(),
+    "content/jobs/c.json": '{"id":"c","department":"b","sortOrder":3,"sortOrder":99}',
+    "content/jobs/d.json": { id: "d", department: "b", sortOrder: 100 },
+  } });
+  const input = await f.payload(["content/jobs/b.json", "content/jobs/a.json"]);
+  input.groups[1].paths.reverse();
+  await assert.rejects(f.save(input), (error: any) => error.status === 400);
+  assert.equal(f.writes, 0, "numeric patches for every group are prepared before creating blobs");
+});
+
+test("snapshot uses select labels with stable group identities and qualifies multi-field labels", async () => {
+  const config: any = defaultConfig();
+  config.content[0].fields[2] = { name: "department", label: "Bereich", type: "select", options: { values: [{ value: "a", label: "Presse" }, { value: "b", label: "TV" }] } };
+  const f = fixture({ config });
+  const snapshot = await f.read();
+  assert.deepEqual(snapshot.groups.map((group: any) => [group.id, group.label]), [['["a"]', "Presse"], ['["b"]', "TV"]]);
+  config.content[0].view.sortPresets[0].fields.splice(1, 0, { field: "title", order: "asc" });
+  config.content[0].fields[1].label = "Titel";
+  assert.equal((await fixture({ config }).read()).groups[0].label, "Bereich: Presse / Titel: Alpha");
 });

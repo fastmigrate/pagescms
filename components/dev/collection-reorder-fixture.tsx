@@ -27,8 +27,8 @@ const initialDocuments = Object.fromEntries(["Beratung", "Verwaltung"].flatMap((
 const loadConfig = async () => config;
 function FixtureHeader() { return <div>{useRepoHeaderState().header}</div>; }
 
-export function CollectionReorderFixture() {
-  const documents = useRef<Record<string, Document>>(structuredClone(initialDocuments));
+export function CollectionReorderFixture({ singleGroup = false }: { singleGroup?: boolean }) {
+  const documents = useRef<Record<string, Document>>(structuredClone(Object.fromEntries(Object.entries(initialDocuments).filter(([, document]) => !singleGroup || document.department === "Beratung"))));
   const revision = useRef(0);
   const shas = useRef(Object.fromEntries(Object.keys(initialDocuments).map(path => [path, `blob-0-${path}`])));
   const mode = useRef<"normal" | "error" | "conflict" | "delay">("normal");
@@ -37,10 +37,10 @@ export function CollectionReorderFixture() {
   const [pending, setPending] = useState(false);
   const [counts, setCounts] = useState({ reads: 0, posts: 0, saves: 0 });
   const snapshot = useCallback((): OrderSnapshot => ({ head: `head-${revision.current}`, configSha: config.sha, field: "sortOrder",
-    groups: ["Beratung", "Verwaltung"].map(department => ({ id: department, label: department,
+    groups: (singleGroup ? ["Beratung"] : ["Beratung", "Verwaltung"]).map(department => ({ id: department, label: department,
       entries: Object.entries(documents.current).filter(([, doc]) => doc.department === department).sort(([, a], [, b]) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id)).map(([path, doc]) => ({ path, sha: shas.current[path], label: doc.title, value: doc.sortOrder })),
     })),
-  }), []);
+  }), [singleGroup]);
   const request = useCallback<OrderRequest>(async (input, init) => {
     const url = new URL(input, "http://fixture.local");
     if (init?.method !== "POST") {
@@ -62,12 +62,17 @@ export function CollectionReorderFixture() {
     if (behavior === "error") return Response.json({ status: "error", message: "Simulierter Speicherfehler. Bitte erneut versuchen." }, { status: 503 });
     const payload = JSON.parse(String(init?.body)) as OrderSave;
     const current = snapshot();
-    const group = current.groups.find(item => item.id === payload.groupId);
-    if (behavior === "conflict" || payload.expectedHead !== current.head || payload.configSha !== current.configSha || !group ||
-      JSON.stringify(payload.baseline) !== JSON.stringify(group.entries.map(({ path, sha }) => ({ path, sha })))) return Response.json({ status: "error", message: "Konflikt. Der gespeicherte Stand wurde geändert. Entwurf verwerfen und neu öffnen." }, { status: 409 });
-    if (new Set(payload.paths).size !== group.entries.length || payload.paths.length !== group.entries.length || payload.paths.some(path => !group.entries.some(entry => entry.path === path))) return Response.json({ status: "error", message: "Unvollständige Gruppe." }, { status: 400 });
+    if (behavior === "conflict" || payload.expectedHead !== current.head || payload.configSha !== current.configSha
+      || payload.groups.length !== current.groups.length || new Set(payload.groups.map(group => group.id)).size !== current.groups.length) return Response.json({ status: "error", message: "Konflikt. Der gespeicherte Stand wurde geändert. Entwurf verwerfen und neu öffnen." }, { status: 409 });
+    for (const draft of payload.groups) {
+      const group = current.groups.find(group => group.id === draft.id);
+      if (!group || JSON.stringify(draft.baseline) !== JSON.stringify(group.entries.map(({ path, sha }) => ({ path, sha })))) return Response.json({ status: "error", message: "Konflikt. Der gespeicherte Stand wurde geändert." }, { status: 409 });
+      if (new Set(draft.paths).size !== group.entries.length || draft.paths.length !== group.entries.length || draft.paths.some(path => !group.entries.some(entry => entry.path === path))) return Response.json({ status: "error", message: "Unvollständige Gruppe." }, { status: 400 });
+    }
+    const changed = payload.groups.filter(draft => draft.paths.some((path, index) => current.groups.find(group => group.id === draft.id)!.entries[index].path !== path));
+    if (!changed.length) return Response.json({ status: "success", data: current });
     revision.current += 1;
-    payload.paths.forEach((path, index) => {
+    for (const draft of changed) draft.paths.forEach((path, index) => {
       documents.current[path] = { ...documents.current[path], sortOrder: index + 1 };
       shas.current[path] = `blob-${revision.current}-${path}`;
     });
@@ -78,7 +83,7 @@ export function CollectionReorderFixture() {
     <main className="mx-auto grid max-w-6xl gap-6 px-4 py-8 sm:px-6">
       <header className="space-y-3">
         <h1 className="text-2xl font-semibold">Sammlungsreihenfolge testen</h1>
-        <p>Die echte Sammlungsansicht speichert ausschließlich synthetische JSON-Dokumente im Arbeitsspeicher. Beratung enthält 32 Einträge, Verwaltung enthält 3.</p>
+        <p>Die echte Sammlungsansicht speichert ausschließlich synthetische JSON-Dokumente im Arbeitsspeicher. Beratung enthält 32 Einträge{!singleGroup && ", Verwaltung enthält 3"}.</p>
         <div className="flex flex-wrap items-center gap-3">
           <label className="text-sm">Nächster Speicherversuch <select aria-label="Nächster Speicherversuch" className="ml-2 rounded border bg-background p-2" value={nextMode} disabled={pending} onChange={event => {
             mode.current = event.target.value as typeof nextMode;

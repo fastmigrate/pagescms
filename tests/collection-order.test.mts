@@ -26,10 +26,10 @@ test('draft moves are immutable, group scoped and dirty only from changed identi
  const baseline={head:'head',configSha:'config',field:'order',groups:[{id:'a',label:'A',entries:[{path:'a.json',sha:'a',label:'A',value:1},{path:'b.json',sha:'b',label:'B',value:2}]},{id:'b',label:'B',entries:[]}]};
  const draft=orderDraft(baseline);
  assert.equal(orderDirty(draft),false);
- const moved={...draft,paths:moveOrder(draft.paths,0,1)};
+ const moved={...draft,groups:draft.groups.map(group=>group.id==='a'?{...group,paths:moveOrder(group.paths,0,1)}:group)};
  assert.equal(orderDirty(moved),true);
- assert.deepEqual(draft.paths,['a.json','b.json']);
- assert.deepEqual(moveOrder(draft.paths,0,-1),draft.paths);
- assert.deepEqual(orderPayload(moved),{expectedHead:'head',configSha:'config',groupId:'a',baseline:[{path:'a.json',sha:'a'},{path:'b.json',sha:'b'}],paths:['b.json','a.json']});
- assert.equal(orderDirty(orderDraft(baseline,'b')),false);
+ assert.deepEqual(draft.groups[0].paths,['a.json','b.json']);
+ assert.deepEqual(moveOrder(draft.groups[0].paths,0,-1),draft.groups[0].paths);
+ assert.deepEqual(orderPayload(moved),{expectedHead:'head',configSha:'config',groups:[{id:'a',baseline:[{path:'a.json',sha:'a'},{path:'b.json',sha:'b'}],paths:['b.json','a.json']},{id:'b',baseline:[],paths:[]}]});
+ assert.equal(orderDirty(orderDraft(baseline)),false);
 });
