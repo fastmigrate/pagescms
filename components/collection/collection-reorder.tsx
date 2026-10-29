@@ -22,10 +22,10 @@ function OrderRow({ entry, index, count, columns, disabled, move }: {
     className={`relative border-b bg-background last:border-b-0 ${isDragging ? "z-10 opacity-70" : ""}`}>
     <td className="p-2 align-top"><Button ref={setActivatorNodeRef} type="button" variant="ghost" size="icon-sm" className="touch-none cursor-grab" disabled={disabled}
       {...attributes} {...listeners} aria-label={`${entry.label} ziehen`}><GripVertical className="size-4" /></Button></td>
-    {columns.map(column => <td key={column.id} className="min-w-36 max-w-sm whitespace-normal break-words p-3 align-top [overflow-wrap:anywhere]" data-column-id={column.id}>
+    {columns.map(column => <td key={column.id} className="max-w-sm whitespace-normal break-words p-3 align-top [overflow-wrap:anywhere]" data-column-id={column.id}>
       <CollectionCell column={column} valueAt={path => safeAccess(entry.fields, path)} />
     </td>)}
-    <td className="p-2 align-top"><div className="flex gap-1">
+    <td className="sticky right-0 bg-background p-2 align-top"><div className="flex gap-1">
       <Button type="button" variant="outline" size="icon-sm" aria-label={`${entry.label} nach oben`} disabled={disabled || index === 0} onClick={() => move(index, index - 1)}><ArrowUp className="size-4" /></Button>
       <Button type="button" variant="outline" size="icon-sm" aria-label={`${entry.label} nach unten`} disabled={disabled || index === count - 1} onClick={() => move(index, index + 1)}><ArrowDown className="size-4" /></Button>
     </div></td>
@@ -49,8 +49,8 @@ function OrderGroupList({ group, draft, columns, showHeading, disabled, move }: 
         <table aria-label={`Reihenfolge ${group.label}`} className="w-full text-sm text-left">
           <thead className="border-b bg-muted/50"><tr>
             <th scope="col" className="w-12 p-3"><span className="sr-only">Ziehen</span></th>
-            {columns.map(column => <th key={column.id} scope="col" className="min-w-36 p-3 font-medium">{column.label}</th>)}
-            <th scope="col" className="w-24 p-3">Verschieben</th>
+            {columns.map(column => <th key={column.id} scope="col" className="p-3 font-medium">{column.label}</th>)}
+            <th scope="col" className="sticky right-0 w-24 bg-muted p-3">Verschieben</th>
           </tr></thead>
           <SortableContext items={draft.paths} strategy={verticalListSortingStrategy}>
             <tbody>{draft.paths.map((path, index) => {

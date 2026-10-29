@@ -15,6 +15,8 @@ const fallback = { name: "when", label: "Date or event", fallback: ["meta.date",
 test("resolved columns retain legacy defaults, direct false labels, nested fields and filename date", () => {
   assert.deepEqual(resolveCollectionColumns({ fields }).map(column => column.id), ["title", "event"]);
   assert.deepEqual(resolveCollectionColumns({}).map(column => column.label), ["Name"]);
+  assert.deepEqual(resolveCollectionColumns({ view: { fields: ["name"] } }).map(column => column.id), ["name"]);
+  assert.deepEqual(resolveCollectionColumns({ filename: "{year}-{month}-{day}-{title}.json", view: { fields: ["name", "date"] } }).map(column => column.id), ["name", "date"]);
   const columns = resolveCollectionColumns({ fields, filename: "{year}-{month}-{day}-{title}.json", view: { fields: ["title", "meta.date", "date", "missing", "meta", fallback] } });
   assert.deepEqual(columns.map(column => column.id), ["title", "meta.date", "display:when", "date"]);
   assert.equal(columns[0].label, false);

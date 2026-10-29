@@ -613,3 +613,19 @@ test("order snapshots project configured read-transformed columns and saves acce
   assert.equal(result.groups[0].entries[1].fields.sortOrder, 2);
   assert.equal(result.groups[0].entries[1].fields.meta.date, "2026-10-29");
 });
+
+test("direct date-list columns load and retain raw list content through numeric order saves", async () => {
+  const config: any = defaultConfig();
+  config.content[0].fields.push({ name: "dates", type: "date", list: true, options: { format: "dd.MM.yyyy" } });
+  config.content[0].view.fields = ["title", "dates"];
+  const documents: any = defaultDocuments();
+  documents["content/jobs/a.json"].dates = ["29.10.2026", "30.10.2026"];
+  documents["content/jobs/b.json"].dates = [];
+  const f = fixture({ config, documents });
+  const snapshot = await f.read();
+  assert.deepEqual(snapshot.groups[0].entries[0].fields.dates, ["2026-10-29", "2026-10-30"]);
+  assert.deepEqual(snapshot.groups[0].entries[1].fields.dates, []);
+  const saved = await f.save(await f.payload(["content/jobs/b.json", "content/jobs/a.json"]));
+  assert.deepEqual(saved.groups[0].entries[1].fields.dates, ["2026-10-29", "2026-10-30"]);
+  assert.deepEqual(f.value("content/jobs/a.json"), { ...documents["content/jobs/a.json"], sortOrder: 2 });
+});

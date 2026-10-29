@@ -81,9 +81,13 @@ function snapshotFor(loaded: Omit<LoadedOrder, "snapshot" | "treeSha">): OrderSn
   const config = { object: configObject };
   const readValue = (value: unknown, path: string) => {
     const field = getFieldByPath(schema.fields, path);
-    const transformed = field && typeof field.type === "string" && readFns[field.type]
-      ? readFns[field.type](value, field, config) : undefined;
-    return transformed === undefined ? value : transformed;
+    const read = field && typeof field.type === "string" ? readFns[field.type] : undefined;
+    if (!read || !field) return value;
+    const transform = (item: unknown) => {
+      const result = read(item, field, config);
+      return result === undefined ? item : result;
+    };
+    return field.list && Array.isArray(value) ? value.map(transform) : transform(value);
   };
   const preset: SortPreset = {
     ...definition.preset,

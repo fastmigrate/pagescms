@@ -27,7 +27,7 @@ export function resolveCollectionColumns(schema: {
     id: path, label: field.label ?? field.name, sources: [{ path, field }], fallback: false,
   });
   const configured = schema.view?.fields;
-  const columns = configured?.length
+  const columns = configured?.length && schema.fields
     ? configured.flatMap(column => {
       if (typeof column === "string") {
         const field = findField(column);
