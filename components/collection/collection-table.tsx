@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, type ReactNode } from "react";
 import {
   flexRender,
   getCoreRowModel,
@@ -77,6 +77,7 @@ export function CollectionTable<TData extends TableData>({
   isTree = false,
   primaryField,
   sortPresets = [],
+  toolbarActions,
 }: {
   columns: any[],
   data: Record<string, any>[],
@@ -89,6 +90,7 @@ export function CollectionTable<TData extends TableData>({
   isTree?: boolean,
   primaryField?: string,
   sortPresets?: SortPreset[],
+  toolbarActions?: ReactNode,
 }) {
   const [expanded, setExpanded] = useState<ExpandedState>({});
   
@@ -195,10 +197,10 @@ export function CollectionTable<TData extends TableData>({
 
   return (
     <div className="space-y-2">
-      {sortPresets.length > 0 && (
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-2 text-sm">
-            <span>Sort order</span>
+      {(sortPresets.length > 0 || toolbarActions) && (
+        <div className="flex flex-wrap items-end gap-3">
+          {sortPresets.length > 0 && <label className="flex flex-col items-start gap-1 text-sm">
+            <span>Sortierung</span>
             <select
               className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-ring"
               value={activePreset}
@@ -210,7 +212,8 @@ export function CollectionTable<TData extends TableData>({
               <option value="" disabled>Column sorting</option>
               {sortPresets.map(preset => <option key={preset.name} value={preset.name}>{preset.label}</option>)}
             </select>
-          </label>
+          </label>}
+          {toolbarActions && <div className="ml-auto shrink-0">{toolbarActions}</div>}
         </div>
       )}
       <Table className="border-separate border-spacing-0 text-sm">

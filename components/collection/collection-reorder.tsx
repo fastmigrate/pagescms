@@ -147,16 +147,19 @@ export function CollectionReorder({ url, request = fetch, onClose, onSaved, setU
     }
   };
 
+  const header = (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div><h2 className="text-xl font-semibold">Reihenfolge bearbeiten</h2><p className="text-sm text-muted-foreground">Innerhalb eines Bereichs verschieben. Erst Speichern übernimmt alle Änderungen.</p></div>
+      <Button variant="outline" className="ml-auto shrink-0" disabled={saving} onClick={close}>Zur Übersicht</Button>
+    </div>
+  );
   if (!active) return <section className="min-w-0 space-y-4" aria-label="Reihenfolge bearbeiten">
-    <Button variant="outline" onClick={onClose}>Zur Übersicht</Button>
+    {header}
     {state.status === "loading" ? <p role="status">Reihenfolge wird geladen…</p> : <><p role="alert">{state.error}</p><Button onClick={() => setLoadAttempt(attempt => attempt + 1)}>Erneut laden</Button></>}
   </section>;
   const multipleGroups = state.groups.length > 1;
   return <section className="min-w-0 space-y-4" aria-label="Reihenfolge bearbeiten" aria-busy={saving}>
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div><h2 className="text-xl font-semibold">Reihenfolge bearbeiten</h2><p className="text-sm text-muted-foreground">Innerhalb eines Bereichs verschieben. Erst Speichern übernimmt alle Änderungen.</p></div>
-      <Button variant="outline" disabled={saving} onClick={close}>Zur Übersicht</Button>
-    </div>
+    {header}
     <div className="sticky top-0 z-20 flex flex-wrap items-center gap-3 rounded-lg border bg-background p-3 shadow-sm">
       {multipleGroups && <label className="flex items-center gap-2 text-sm">Bereich
         <select className="max-w-full rounded-md border bg-background p-2" aria-label="Bereich" value={filter.kind === "all" ? "" : filter.id} disabled={saving}

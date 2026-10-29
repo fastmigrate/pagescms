@@ -6,7 +6,10 @@ and CollectionReorder components with an injected in-memory request boundary.
 It uses no authentication, database, GitHub, or customer repository.
 
 The collection has more than 25 members in its first group and a second group.
-Open **Seitenaktionen** and select **Reihenfolge bearbeiten** to load complete groups. Move entries with a drag
+The **Sortierung** label sits above its preset selector. **Aktionen** sits at
+the right of the same toolbar row and keeps the accessible name
+**Seitenaktionen**. Open **Aktionen** and select **Reihenfolge bearbeiten**
+to load complete groups. Move entries with a drag
 handle, keyboard, or the up/down buttons. Movement changes the draft only.
 Check the saved content and save counter before and after explicit Save.
 Discard restores saved order. Delayed saves disable movement and repeated saves.
@@ -22,6 +25,19 @@ the configured browse columns in aligned tables, with a leading drag handle and
 movement buttons. Cells wrap and wide tables scroll within their collection.
 The configured numeric column keeps its saved value while the draft moves, then
 updates from the accepted snapshot after Save. Headers do not sort the draft.
+
+Check the toolbar with presets and reorder actions, presets alone, reorder
+actions alone, and neither. Collections without reorder configuration have no
+**Aktionen** menu. A collection with neither control has no empty toolbar.
+Search, add-entry, folder, repository workflow, and row menus retain their
+existing locations and behavior. Changing a sort preset still resets to page 1.
+
+Delay the order GET response and compare **Zur Übersicht** while loading and
+after the response arrives. The heading, description, and return button keep
+the same position in loading, load-error, and ready states. Check a narrow
+viewport too, where the return button stays aligned right when the header
+wraps. The return button remains disabled during saves and asks before
+discarding a dirty draft. This read-only loading check must issue no writes.
 
 The synthetic **Datum / Zeitraum** column chooses a custom-format date before
 its event text. Every group includes a date plus event, empty date plus event,

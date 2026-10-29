@@ -81,7 +81,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { EllipsisVertical, FolderPlus, Plus, Search } from "lucide-react";
+import { ChevronDown, EllipsisVertical, FolderPlus, Plus, Search } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -96,7 +96,6 @@ type GroupTrailItem = {
 const CollectionHeaderActions = memo(function CollectionHeaderActions({
   addEntryHref,
   actionNode,
-  onReorder,
   collectionPath,
   name,
   showAddEntry,
@@ -106,7 +105,6 @@ const CollectionHeaderActions = memo(function CollectionHeaderActions({
 }: {
   addEntryHref: string;
   actionNode?: ReactNode;
-  onReorder?: () => void;
   collectionPath: string;
   name: string;
   showAddEntry: boolean;
@@ -124,10 +122,6 @@ const CollectionHeaderActions = memo(function CollectionHeaderActions({
   return (
     <div className="flex items-center gap-x-2">
       {actionNode}
-      {onReorder && <DropdownMenu>
-        <DropdownMenuTrigger asChild><Button variant="outline" size="icon" aria-label="Seitenaktionen"><EllipsisVertical /></Button></DropdownMenuTrigger>
-        <DropdownMenuContent align="end"><DropdownMenuItem onSelect={onReorder}>Reihenfolge bearbeiten</DropdownMenuItem></DropdownMenuContent>
-      </DropdownMenu>}
       <div className="relative hidden sm:block w-52 md:w-64">
         <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 opacity-50 pointer-events-none" />
         <Input
@@ -889,7 +883,6 @@ export function Collection({ name, path, request = fetch }: { name: string; path
         <div className="min-w-0 truncate">{breadcrumbNode}</div>
         <CollectionHeaderActions
           addEntryHref={addEntryHref}
-          onReorder={!manualOrder && schema.view?.reorder ? () => setManualOrder(true) : undefined}
           actionNode={manualOrder ? undefined : <>
             {collectionActions.length > 0 ? (
               <RepoActionButtons
@@ -919,7 +912,6 @@ export function Collection({ name, path, request = fetch }: { name: string; path
     ),
     [
       manualOrder,
-      schema.view?.reorder,
       addEntryHref,
       breadcrumbNode,
       collectionActions,
@@ -989,6 +981,16 @@ export function Collection({ name, path, request = fetch }: { name: string; path
       setSearch={setTableSearch}
       initialState={initialState}
       sortPresets={schema.view?.sortPresets}
+      toolbarActions={schema.view?.reorder ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" aria-label="Seitenaktionen">Aktionen<ChevronDown /></Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={() => setManualOrder(true)}>Reihenfolge bearbeiten</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : undefined}
       onExpand={handleExpand}
       pathname={pathname}
       path={path || schema.path}
