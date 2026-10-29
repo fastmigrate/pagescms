@@ -34,6 +34,8 @@ import { EmptyCreate } from "@/components/empty-create";
 import { FileOptions } from "@/components/file/file-options";
 import { presetColumns, presetColumnId, presetRequestFields } from "@/lib/collection-sort";
 import { CollectionTable } from "./collection-table";
+import { CollectionReorder } from "./collection-reorder";
+import type { OrderRequest } from "@/lib/collection-order";
 import { FolderCreate } from "@/components/folder-create";
 import { resolveContentOperations } from "@/lib/operations";
 import { useRepoHeader } from "@/components/repo/repo-header-context";
@@ -171,7 +173,8 @@ const CollectionHeaderActions = memo(function CollectionHeaderActions({
   );
 });
 
-export function Collection({ name, path }: { name: string; path?: string }) {
+export function Collection({ name, path, request = fetch }: { name: string; path?: string; request?: OrderRequest }) {
+  const [manualOrder, setManualOrder] = useState(false);
   const [tableSearch, setTableSearch] = useState("");
   const [data, setData] = useState<Record<string, any>[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -181,7 +184,7 @@ export function Collection({ name, path }: { name: string; path?: string }) {
   const pathname = usePathname();
   const router = useRouter();
 
-  const { config } = useConfig();
+  const { config, setUpdateBlocked } = useConfig();
   if (!config) throw new Error(`Configuration not found.`);
 
   const schema = useMemo(
@@ -278,7 +281,7 @@ export function Collection({ name, path }: { name: string; path?: string }) {
 
   const fetchCollectionByUrl = useCallback(
     async (apiUrl: string): Promise<Record<string, any>[]> => {
-      const response = await fetch(apiUrl);
+      const response = await request(apiUrl);
       const result = await requireApiSuccess<any>(response, "Fetch failed");
 
       if (result.data.errors?.length) {
@@ -295,7 +298,7 @@ export function Collection({ name, path }: { name: string; path?: string }) {
         return a.name.localeCompare(b.name);
       });
     },
-    [schema.view?.foldersFirst],
+    [schema.view?.foldersFirst, request],
   );
 
   const collectionPath =
@@ -941,8 +944,9 @@ export function Collection({ name, path }: { name: string; path?: string }) {
         <div className="min-w-0 truncate">{breadcrumbNode}</div>
         <CollectionHeaderActions
           addEntryHref={addEntryHref}
-          actionNode={
-            collectionActions.length > 0 ? (
+          actionNode={manualOrder ? undefined : <>
+            {schema.view?.reorder && <Button variant="outline" onClick={() => setManualOrder(true)}>Reihenfolge bearbeiten</Button>}
+            {collectionActions.length > 0 ? (
               <RepoActionButtons
                 actions={collectionActions}
                 owner={config.owner}
@@ -957,8 +961,8 @@ export function Collection({ name, path }: { name: string; path?: string }) {
                   format: schema.format ?? null,
                 }}
               />
-            ) : undefined
-          }
+            ) : null}
+          </>}
           collectionPath={collectionPath}
           name={name}
           showAddEntry={canCreate}
@@ -969,6 +973,8 @@ export function Collection({ name, path }: { name: string; path?: string }) {
       </div>
     ),
     [
+      manualOrder,
+      schema.view?.reorder,
       addEntryHref,
       breadcrumbNode,
       collectionActions,
@@ -988,9 +994,8 @@ export function Collection({ name, path }: { name: string; path?: string }) {
     ],
   );
 
-  useRepoHeader({
-    header: headerNode,
-  });
+  const orderHeader = useMemo(() => <span className="font-semibold">{schema.label || schema.name} · Reihenfolge</span>, [schema.label, schema.name]);
+  useRepoHeader({ header: manualOrder ? orderHeader : headerNode });
 
   const isLoading =
     !swrCollectionData && !swrCollectionError && data.length === 0;
@@ -1047,5 +1052,12 @@ export function Collection({ name, path }: { name: string; path?: string }) {
     />
   );
 
-  return <div className="min-w-0 flex flex-col space-y-6">{contentNode}</div>;
+  return <div className="min-w-0 flex flex-col space-y-6">{manualOrder ? <CollectionReorder
+    key={`${config.sha}:${name}`}
+    url={`/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/collections/${encodeURIComponent(name)}/order`}
+    request={request}
+    setUpdateBlocked={setUpdateBlocked}
+    onClose={() => setManualOrder(false)}
+    onSaved={() => { void mutate(rootCollectionKey); }}
+  /> : contentNode}</div>;
 }

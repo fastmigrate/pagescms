@@ -1,0 +1,150 @@
+import assert from "node:assert/strict";
+import { pathToFileURL } from "node:url";
+
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ? pathToFileURL(process.env.PLAYWRIGHT_MODULE).href : "playwright");
+const base = process.env.FIXTURE_BASE_URL ?? "http://127.0.0.1:4593";
+const browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM_EXECUTABLE ? { executablePath: process.env.CHROMIUM_EXECUTABLE } : {}) });
+const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+await context.route("**/*", route => new URL(route.request().url()).origin === new URL(base).origin ? route.continue() : route.abort());
+const page = await context.newPage();
+page.setDefaultTimeout(10_000);
+const errors = [];
+page.on("pageerror", error => errors.push(error.message));
+const rows = page.locator("[data-order-path]");
+const paths = () => rows.evaluateAll(items => items.map(item => item.getAttribute("data-order-path")));
+const stored = async () => JSON.parse(await page.getByLabel("Gespeicherte Dokumente", { exact: true }).textContent());
+const counts = () => page.getByTestId("fixture-counts").innerText();
+const waitFirst = path => page.waitForFunction(expected => document.querySelector("[data-order-path]")?.getAttribute("data-order-path") === expected, path);
+const firstPath = "content/jobs/beratung-01.json";
+const secondPath = "content/jobs/beratung-02.json";
+const dialog = async (action, accept) => {
+  const handled = page.waitForEvent("dialog").then(prompt => accept ? prompt.accept() : prompt.dismiss());
+  await action();
+  await handled;
+};
+
+try {
+  await page.goto(`${base}/dev/fixtures/collection-reorder`);
+  await page.getByRole("button", { name: "Reihenfolge bearbeiten", exact: true }).click();
+  await rows.first().waitFor();
+  assert.equal(await rows.count(), 32, "manual mode contains the entire group beyond browse pagination");
+  assert.equal(await page.getByRole("button", { name: "Beratung 01 nach oben", exact: true }).isDisabled(), true);
+  assert.equal(await page.getByRole("button", { name: "Beratung 32 nach unten", exact: true }).isDisabled(), true);
+  const original = await stored();
+  await page.getByRole("button", { name: "Beratung 01 nach unten", exact: true }).click();
+  await waitFirst(secondPath);
+  assert.match(await counts(), /Schreibanfragen 0/);
+  assert.deepEqual(await stored(), original, "buttons only change draft identity order");
+  assert.match(await rows.nth(1).innerText(), /Gespeicherter Platz 1, Wert 1/);
+  await page.getByRole("button", { name: "Verwerfen", exact: true }).click();
+  await waitFirst(firstPath);
+  assert.match(await counts(), /Schreibanfragen 0/);
+
+  console.log("PASS complete group and draft-only button/discard.");
+  const handle = page.getByRole("button", { name: "Beratung 01 ziehen", exact: true });
+  const source = await handle.boundingBox();
+  const target = await page.getByRole("button", { name: "Beratung 03 ziehen", exact: true }).boundingBox();
+  await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2 + 10, { steps: 3 });
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 16 });
+  await page.mouse.up();
+  await page.waitForTimeout(100);
+  await waitFirst(secondPath);
+  assert.equal((await paths())[2], firstPath, "pointer dragging moves the same stable identity");
+  assert.match(await counts(), /Schreibanfragen 0/);
+  await page.getByRole("button", { name: "Verwerfen", exact: true }).click();
+  await waitFirst(firstPath);
+
+  console.log("PASS pointer drag without writes.");
+  await page.waitForTimeout(250);
+  await handle.focus();
+  await page.keyboard.press("Space", { delay: 100 });
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-pressed") === "true");
+  await page.keyboard.press("ArrowDown", { delay: 100 });
+  await page.waitForFunction(() => [...document.querySelectorAll("[data-order-path]")].some(item => item.style.transform && !item.style.transform.includes("0px, 0px")));
+  await page.keyboard.press("Space", { delay: 100 });
+  await waitFirst(secondPath);
+  assert.match(await counts(), /Schreibanfragen 0/);
+  await dialog(() => page.getByRole("combobox", { name: "Gruppe", exact: true }).selectOption("Verwaltung"), false);
+  assert.equal(await rows.count(), 32, "canceling group switch preserves draft");
+  await dialog(() => page.getByRole("button", { name: "Zur Übersicht", exact: true }).click(), false);
+  await waitFirst(secondPath);
+  await dialog(() => page.getByRole("link", { name: "Andere Fixture öffnen", exact: true }).click(), false);
+  assert.match(page.url(), /collection-reorder$/);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await waitFirst(secondPath);
+
+  console.log("PASS keyboard reorder and cancel guards.");
+  await page.getByRole("combobox", { name: "Nächster Speicherversuch", exact: true }).selectOption("error");
+  await page.getByRole("button", { name: "Speichern", exact: true }).click();
+  await page.getByRole("alert").filter({ hasText: "Simulierter Speicherfehler" }).waitFor();
+  await waitFirst(secondPath);
+  assert.deepEqual(await stored(), original, "failed save preserves saved documents and draft");
+  assert.match(await counts(), /Schreibanfragen 1\. Erfolgreich gespeichert 0/);
+  await page.getByRole("combobox", { name: "Nächster Speicherversuch", exact: true }).selectOption("conflict");
+  await page.getByRole("button", { name: "Speichern", exact: true }).click();
+  await page.getByRole("alert").filter({ hasText: "Konflikt" }).waitFor();
+  await waitFirst(secondPath);
+  assert.match(await counts(), /Schreibanfragen 2\. Erfolgreich gespeichert 0/);
+
+  console.log("PASS error and conflict preserve draft.");
+  await page.getByRole("combobox", { name: "Nächster Speicherversuch", exact: true }).selectOption("delay");
+  await page.getByRole("button", { name: "Speichern", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="fixture-counts"]')?.textContent.includes("Antwort wartet ja"));
+  for (const name of ["Speichern", "Verwerfen", "Zur Übersicht", "Beratung 01 nach oben", "Beratung 02 ziehen"]) assert.equal(await page.getByRole("button", { name, exact: true }).isDisabled(), true, `${name} is disabled while save is pending`);
+  assert.equal(await page.getByRole("combobox", { name: "Gruppe", exact: true }).isDisabled(), true);
+  assert.deepEqual(await stored(), original, "delayed save has not changed authoritative saved content");
+  await page.getByRole("button", { name: "Antwort freigeben", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="fixture-counts"]')?.textContent.includes("Erfolgreich gespeichert 1"));
+  await page.waitForFunction(() => document.querySelector('section[aria-label="Reihenfolge bearbeiten"]')?.getAttribute("aria-busy") === "false");
+  const saved = await stored();
+  assert.equal(saved[firstPath].sortOrder, 2);
+  assert.equal(saved[secondPath].sortOrder, 1);
+  for (const [path, document] of Object.entries(original)) {
+    const { sortOrder: originalOrder, ...originalFields } = document;
+    const { sortOrder: savedOrder, ...savedFields } = saved[path];
+    assert.deepEqual(savedFields, originalFields, `${path} retains hidden values and unknown content`);
+    if (document.department === "Verwaltung") assert.equal(savedOrder, originalOrder, "other group remains unchanged");
+  }
+  assert.equal(await page.getByRole("button", { name: "Speichern", exact: true }).isDisabled(), true);
+  console.log("PASS delayed save and content preservation.");
+  await page.getByRole("button", { name: "Zur Übersicht", exact: true }).click();
+  await page.getByRole("table").waitFor();
+  assert.equal(await page.getByRole("row").count(), 26, "normal browse keeps its 25-row pagination");
+  assert.match(await page.getByRole("row").nth(1).innerText(), /Beratung 02/);
+  await page.getByRole("button", { name: "Reihenfolge bearbeiten", exact: true }).click();
+  await waitFirst(secondPath);
+  await page.getByRole("combobox", { name: "Gruppe", exact: true }).selectOption("Verwaltung");
+  assert.equal(await rows.count(), 3);
+  assert.equal(await page.getByRole("button", { name: "Verwaltung 01 nach oben", exact: true }).isDisabled(), true);
+  await page.getByRole("button", { name: "Verwaltung 01 nach unten", exact: true }).click();
+  await dialog(() => page.getByRole("combobox", { name: "Gruppe", exact: true }).selectOption("Beratung"), true);
+  await waitFirst(secondPath);
+  assert.equal(await rows.count(), 32);
+  assert.match(await counts(), /Schreibanfragen 3\. Erfolgreich gespeichert 1/);
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, "manual mode fits a mobile viewport");
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  await page.getByRole("button", { name: "Beratung 02 nach unten", exact: true }).click();
+  await dialog(() => page.getByRole("link", { name: "Andere Fixture öffnen", exact: true }).click(), true);
+  await page.waitForURL("**/entry-save-reset");
+  await page.getByLabel("Note", { exact: true }).fill("First note");
+  await page.getByRole("button", { name: "Add an item", exact: true }).click();
+  await page.getByLabel("Note", { exact: true }).nth(1).fill("Second note");
+  await page.getByRole("button", { name: "Move item 2 up", exact: true }).click();
+  assert.deepEqual(await page.getByLabel("Note", { exact: true }).evaluateAll(inputs => inputs.map(input => input.value)), ["Second note", "First note"]);
+  assert.match(await page.getByRole("status").filter({ hasText: "Successful saves" }).innerText(), /Successful saves: 0/);
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.waitForFunction(() => [...document.querySelectorAll('[role="status"]')].some(item => item.textContent.includes("Successful saves: 1")));
+  assert.deepEqual(JSON.parse(await page.getByLabel("Saved content", { exact: true }).textContent()).notes, [{ text: "Second note" }, { text: "First note" }]);
+  assert.deepEqual(errors, [], "production component fixtures produce no browser errors");
+  console.log("PASS Collection browse/manual/save/browse, complete groups, pointer/keyboard/buttons, discard and guards, pending/error/conflict, hidden data preservation, mobile bounds, and real Entry list Save.");
+} catch (error) {
+  console.error("Draft paths at failure", await paths());
+  console.error("Active button", await page.evaluate(() => document.activeElement?.outerHTML));
+  throw error;
+} finally {
+  await browser.close();
+}
