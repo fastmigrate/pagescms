@@ -39,11 +39,11 @@ test('oversized declared and chunked requests are 413 and stop reading', async (
   await assert.rejects(readFileRequest(new Request('https://cms.test', { method: 'POST', body: '{"content":"cut' })), status(400));
 });
 
-test('file routes bypass body cloning; other API routes keep proxy protection', () => {
-  for (const path of ['/api/owner/repo/main/files/photo.jpg', '/api/owner/repo/feature%2Ftest/files/images%2Fphoto.jpg', '/api/owner/repo/main/files/page.json']) {
+test('file and order routes bypass body cloning; other API routes keep proxy protection', () => {
+  for (const path of ['/api/owner/repo/main/files/photo.jpg', '/api/owner/repo/feature%2Ftest/files/images%2Fphoto.jpg', '/api/owner/repo/main/files/page.json', '/api/owner/repo/main/collections/jobs/order', '/api/owner/repo/feature%2Ftest/collections/jobs/order/']) {
     assert.equal(unstable_doesMiddlewareMatch({config: mod.exports.config, nextConfig: {}, url: path}), false, path);
   }
-  for (const path of ['/api/owner/repo/main/references/works', '/api/auth/session', '/api/owner/repo/main/files/photo.jpg/rename', '/api/owner/repo/main/files/images%2Fphoto.jpg/rename', '/owner/repo/main/file/home']) {
+  for (const path of ['/api/owner/repo/main/references/works', '/api/owner/repo/main/collections/jobs', '/api/owner/repo/main/collections/jobs/order/other', '/api/auth/session', '/api/owner/repo/main/files/photo.jpg/rename', '/api/owner/repo/main/files/images%2Fphoto.jpg/rename', '/owner/repo/main/file/home']) {
     assert.equal(unstable_doesMiddlewareMatch({config: mod.exports.config, nextConfig: {}, url: path}), true, path);
   }
 });
