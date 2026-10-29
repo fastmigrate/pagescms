@@ -477,3 +477,56 @@ test("actual route reports GitHub read errors, write denial and branch conflicts
     assert.equal(f.head, baseHead);
   }
 });
+
+
+test("numeric order edits preserve every unrelated JSON byte including large numeric literals", async () => {
+  const first = '{\r\n  "id": "a", "title": "Alpha", "department": "a",\r\n  "sortOrder" : 10, "futureId":1234567890123456789, "overflow":1e400, "escaped":"\\u0041"\r\n}\r\n';
+  const second = '{ "id":"b", "title":"Beta", "department":"a", "sortOrder":20, "futureId":9007199254740993 }';
+  const f = fixture({ documents: { "content/jobs/a.json": first, "content/jobs/b.json": second } });
+  await f.save(await f.payload(["content/jobs/b.json", "content/jobs/a.json"]));
+  assert.equal(f.files.get("content/jobs/a.json")!.content, first.replace('"sortOrder" : 10', '"sortOrder" : 2'));
+  assert.equal(f.files.get("content/jobs/b.json")!.content, second.replace('"sortOrder":20', '"sortOrder":1'));
+});
+
+test("reserved media metadata cannot enter a matching order scope unless explicitly excluded", async () => {
+  const config: any = defaultConfig();
+  config.mediaMetadata = "content/jobs/metadata.json";
+  config.content[0].view.reorder.field = "version";
+  config.content[0].view.sortPresets[0].fields = [{ field: "version", order: "asc" }];
+  config.content[0].fields.push({ name: "version", type: "number" });
+  const documents = { "content/jobs/a.json": { id: "a", title: "Alpha", version: 2 }, "content/jobs/metadata.json": { version: 1, assets: {} } };
+  const f = fixture({ config, documents });
+  await assert.rejects(f.read(), (error: any) => error.status === 400 && /reserved|metadata/i.test(error.message));
+  await assert.rejects(f.save({ expectedHead: baseHead, configSha: f.files.get(".pages.yml")!.sha, groupId: "[]", baseline: [], paths: [] }), (error: any) => error.status === 400);
+  assert.equal(f.writes, 0);
+  config.content[0].exclude = ["metadata.json"];
+  const excluded = fixture({ config, documents });
+  assert.deepEqual((await excluded.read()).groups[0].entries.map((entry: any) => entry.path), ["content/jobs/a.json"]);
+  assert.equal(excluded.writes, 0);
+});
+
+
+test("nested numeric edits and absent optional leaves preserve neighboring raw source", async () => {
+  const config: any = defaultConfig();
+  config.content[0].fields[3] = { name: "meta", type: "object", required: true, fields: [{ name: "rank", type: "number" }] };
+  config.content[0].view.reorder.field = "meta.rank";
+  config.content[0].view.sortPresets[0].fields[1].field = "meta.rank";
+  const first = '{ "id":"a", "title":"A", "department":"a", "meta" : { "rank" : 10, "futureId":1234567890123456789 }, "overflow":1e400 }\n';
+  const second = '{"id":"b","title":"B","department":"a","meta":{"futureId":9007199254740993}}';
+  const f = fixture({ config, documents: { "content/jobs/a.json": first, "content/jobs/b.json": second } });
+  await f.save(await f.payload(["content/jobs/b.json", "content/jobs/a.json"]));
+  assert.equal(f.files.get("content/jobs/a.json")!.content, first.replace('"rank" : 10', '"rank" : 2'));
+  assert.equal(f.files.get("content/jobs/b.json")!.content, second.replace('9007199254740993}', '9007199254740993,"rank": 1}'));
+  assert.deepEqual(f.value("content/jobs/a.json").meta.rank, 2);
+  assert.deepEqual(f.value("content/jobs/b.json").meta.rank, 1);
+});
+
+
+test("duplicate order keys cannot report a successful numeric edit of a shadowed property", async () => {
+  const f = fixture({ documents: {
+    "content/jobs/a.json": '{"id":"a","department":"a","sortOrder":3,"sortOrder":10}',
+    "content/jobs/b.json": '{"id":"b","department":"a","sortOrder":20}',
+  } });
+  await assert.rejects(f.save(await f.payload(["content/jobs/b.json", "content/jobs/a.json"])), (error: any) => error.status === 400 && /duplicate JSON keys/i.test(error.message));
+  assert.equal(f.writes, 0);
+});

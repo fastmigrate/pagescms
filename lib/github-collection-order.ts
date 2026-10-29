@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { applyEdits, modify } from "jsonc-parser";
 import { readFns } from "@/fields/registry";
 import { createHttpError } from "@/lib/api-error";
 import { buildCommitTokens, resolveCommitIdentity, resolveCommitMessage } from "@/lib/commit-message";
@@ -7,7 +8,7 @@ import { comparePresetEntries, type SortPreset } from "@/lib/collection-sort";
 import { orderValues, reorderDefinition, type OrderSnapshot, type ReorderDefinition } from "@/lib/collection-order";
 import { clearFileCache, setBranchHeadSha, updateFileCache } from "@/lib/github-cache-file";
 import { getFieldByPath, getPrimaryField, getSchemaByName } from "@/lib/schema";
-import { parse, stringify } from "@/lib/serialization";
+import { parse } from "@/lib/serialization";
 import { MAX_FILE_REQUEST_BYTES } from "@/lib/upload-limits";
 import { getFileName, getParentPath, normalizePath } from "@/lib/utils/file";
 import { createOctokitInstance } from "@/lib/utils/octokit";
@@ -25,6 +26,7 @@ type OrderDocument = {
   sha: string;
   mode: "100644" | "100755";
   content: Record<string, unknown>;
+  source: string;
 };
 type LoadedOrder = {
   head: string;
@@ -160,6 +162,12 @@ async function loadOrder(options: OrderContext, octokit: ReturnType<typeof creat
   try { definition = reorderDefinition(schema); }
   catch (error) { throw createHttpError(error instanceof Error ? error.message : "Invalid manual ordering configuration.", 400); }
   assertPath(schema.path, true);
+  const metadataPath = configObject.mediaMetadata ? normalizePath(configObject.mediaMetadata) : undefined;
+  if (metadataPath && getParentPath(metadataPath) === schema.path
+    && (!schema.extension || metadataPath.endsWith(`.${schema.extension}`))
+    && !(schema.exclude ?? []).includes(getFileName(metadataPath))) {
+    throw createHttpError(`The media metadata document is reserved for AI media operations. Exclude "${getFileName(metadataPath)}" from this collection before ordering.`, 400);
+  }
   const members = tree.tree.filter(entry =>
     entry.path && getParentPath(entry.path) === schema.path && entry.type !== "tree"
     && (!schema.extension || entry.path.endsWith(`.${schema.extension}`))
@@ -172,15 +180,16 @@ async function loadOrder(options: OrderContext, octokit: ReturnType<typeof creat
       assertPath(entry.path!);
       if (seen.has(entry.path!)) throw createHttpError("Duplicate collection path in repository tree.", 400);
       seen.add(entry.path!);
+      const source = await readBlob(entry);
       let content: unknown;
-      try { content = parse(await readBlob(entry), { format: "json" }); }
+      try { content = parse(source, { format: "json" }); }
       catch (error: any) {
         if (error.status) throw error;
         throw createHttpError(`Invalid JSON in "${entry.path}".`, 400);
       }
       if (!content || typeof content !== "object" || Array.isArray(content)) throw createHttpError(`Collection entry "${entry.path}" must contain a JSON object.`, 400);
       orderParent(content as Record<string, unknown>, definition.field, entry.path!);
-      return { path: entry.path!, sha: entry.sha!, mode: entry.mode as OrderDocument["mode"], content: content as Record<string, unknown> };
+      return { path: entry.path!, sha: entry.sha!, mode: entry.mode as OrderDocument["mode"], content: content as Record<string, unknown>, source };
     }));
     documents.push(...batch);
   }
@@ -216,12 +225,11 @@ export async function saveCollectionOrder(options: OrderContext, input: unknown)
   const changes = data.paths.flatMap((path, index) => {
     const document = documents.get(path)!;
     if (valueAt(document.content, loaded.definition.field) === values[index]) return [];
-    const content = structuredClone(document.content);
-    const { parent, key } = orderParent(content, loaded.definition.field, path);
-    parent[key] = values[index];
-    const text = stringify(content, { format: "json" });
+    const text = applyEdits(document.source, modify(document.source, loaded.definition.field.split("."), values[index], {}));
+    const content = parse(text, { format: "json" });
+    if (valueAt(content, loaded.definition.field) !== values[index]) throw createHttpError(`Ambiguous order field in "${path}". Remove duplicate JSON keys before ordering.`, 400);
     if (Buffer.byteLength(text) > MAX_FILE_REQUEST_BYTES) throw createHttpError(`File "${path}" exceeds the supported size.`, 413);
-    return [{ ...document, content, text }];
+    return [{ ...document, content, source: text, text }];
   });
   if (!changes.length) return loaded.snapshot;
   const { owner, repo, branch, user } = options;
