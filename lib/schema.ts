@@ -24,57 +24,71 @@ type NavigationNode = {
 const deepMap = (
   contentObject: Record<string, any>,
   fields: Field[],
-  apply: (value: any, field: Field) => any,
-  { omitEmptyOptionalObjects = false }: { omitEmptyOptionalObjects?: boolean } = {},
+  apply: (value: any, field: Field, path: string) => any,
+  { omitEmptyOptionalObjects = false, onInvalidStructure }: {
+    omitEmptyOptionalObjects?: boolean;
+    onInvalidStructure?: (error: { field: Field; path: string; value: unknown; reason: string }) => void;
+  } = {},
 ): Record<string, any> => {
-  const traverse = (data: any, schema: Field[]): any => {
+  const objectLike = (value: unknown) => value != null && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date);
+  const invalid = (field: Field, path: string, value: unknown, reason: string) => {
+    onInvalidStructure?.({ field, path, value, reason });
+  };
+  const traverse = (data: any, schema: Field[], parentPath = ""): any => {
     const result: any = {};
     const currentData = data || {}; // Ensure data is an object
 
     schema.forEach(field => {
       const value = currentData[field.name];
+      const path = parentPath ? `${parentPath}.${field.name}` : field.name;
 
       if (field.list) {
         if (value === undefined) {
-          result[field.name] = apply(value, field);
+          result[field.name] = apply(value, field, path);
         } else {
+          if (value != null && value !== "" && !Array.isArray(value)) invalid(field, path, value, "Expected a list.");
           result[field.name] = Array.isArray(value)
-            ? value.map(item => {
+            ? value.map((item, index) => {
+                const itemPath = `${path}[${index}]`;
                 if (field.type === "object") {
-                  return traverse(item, field.fields || []);
+                  if (!objectLike(item)) invalid(field, itemPath, item, "Expected an object list item.");
+                  return traverse(item, field.fields || [], itemPath);
                 } else if (field.type === "block") {
                   const blockKey = field.blockKey || "_block";
                   const blockName = item?.[blockKey];
                   const blockDef = field.blocks?.find(b => b.name === blockName);
                   if (blockDef) {
-                    const innerResult = traverse(item, blockDef.fields || []);
+                    const innerResult = traverse(item, blockDef.fields || [], itemPath);
                     // Merge discriminator back after processing inner fields
                     return { [blockKey]: blockName, ...innerResult }; 
                   }
+                  if (!objectLike(item) || Object.keys(item).length) invalid(field, itemPath, item, "Unknown or malformed block variant.");
                   return item;
                 } else {
-                  return apply(item, field);
+                  return apply(item, field, itemPath);
                 }
               })
             : [];
         }
       } else if (field.type === "object") {
+        if (value != null && !objectLike(value)) invalid(field, path, value, "Expected an object.");
         result[field.name] = omitEmptyOptionalObjects && !field.required && isEffectivelyEmpty(value)
           ? undefined
-          : traverse(value, field.fields || []);
+          : traverse(value, field.fields || [], path);
       } else if (field.type === "block") {
         const blockKey = field.blockKey || "_block";
         const blockName = value?.[blockKey];
         const blockDef = field.blocks?.find(b => b.name === blockName);
         if (blockDef && value) {
-          const innerResult = traverse(value, blockDef.fields || []);
+          const innerResult = traverse(value, blockDef.fields || [], path);
           // Merge discriminator back after processing inner fields
           result[field.name] = { [blockKey]: blockName, ...innerResult };
         } else {
+          if (value != null && (!objectLike(value) || Object.keys(value).length)) invalid(field, path, value, "Unknown or malformed block variant.");
           result[field.name] = value;
         }
       } else {
-        result[field.name] = apply(value, field);
+        result[field.name] = apply(value, field, path);
       }
     });
     

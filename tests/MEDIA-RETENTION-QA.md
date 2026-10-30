@@ -1,54 +1,64 @@
-# Verify media retention locally
+# Verify media reference protection locally
 
-Run the focused route, schema and path-policy checks:
+Run the collector and actual-route regressions.
 
 ```sh
-node --test tests/media-operations.test.mts tests/media-operations-route.test.mts
+node --test tests/media-references.test.mts tests/media-reference-route.test.mts tests/github-media-metadata.test.mts tests/media-operations.test.mts
 ```
 
-The actual file Delete and Rename routes use mocked external configuration,
-session, GitHub and cache boundaries. Denied operations must return HTTP 403
-without creating Git objects, updating a branch, or mutating media metadata.
-Tests cover independent flags, legacy defaults, overlapping media and content
-aliases, rename destinations, sibling directories, and disabled media.
+The route fixture runs production session and repository authorization, origin
+checks, configuration parsing, normalization, field transforms, serialization,
+and the immutable publisher. It injects only external auth, persistence and GitHub
+I/O. Its branch model rejects a non-fast-forward update. It never contacts GitHub.
 
-Start the development fixture:
+Verify these outcomes.
+
+1. Delete and Rename of a referenced file return a refusal with the content name,
+   entry path and indexed field. No Git objects are created.
+2. Unused files can be deleted and renamed. A saved replacement permits cleanup
+   of the old file. An unsaved browser change does not permit that cleanup.
+3. Missing or stale content Save preserves the previous document. Merge and
+   duplicate use bytes from the same snapshot and check their final saved values.
+4. Both Save-before-Delete and Delete-before-Save interleavings publish one
+   candidate. Retrying the loser reads the new branch and refuses the unsafe edit.
+5. A concurrent configuration change rejects the old plan. Saved drafts, nested
+   fields, root lists, groups, components and block variants all contribute uses.
+6. Content and media aliases cannot bypass the guard. Upload collision names are
+   checked after allocation. Metadata and asset edits share one guarded commit.
+7. Truncated trees, failed or incomplete blob reads, malformed relevant content,
+   stale source SHAs and occupied rename destinations refuse publication.
+8. An unrelated existing missing reference does not block cleanup of a different
+   unused file. Post-publication cache failures still return success.
+
+Start the production-component fixture.
 
 ```sh
 npm run dev:fixtures -- --hostname 127.0.0.1 --port 4751
 ```
 
-Open `/dev/fixtures/catalog-exchange` or run the isolated browser check:
+Open `/dev/fixtures/catalog-exchange` or run the isolated browser check.
 
 ```sh
 node scripts/check-catalog-exchange-fixture.mjs
 ```
 
 Set `PLAYWRIGHT_MODULE` when Playwright is installed outside this repository.
-Set `CHROME_PATH` when using an existing browser executable. The script launches
-an isolated headless context. It rejects every API network request. `AFTER_IMAGE`
-optionally captures the selected menu at 1280 by 1000 pixels.
+Set `CHROME_PATH` when selecting a browser executable. The script uses an isolated
+headless context. `AFTER_IMAGE` captures the selected state at 1280 by 1000 pixels.
 
-1. Click **Remove** on the current file. The draft reference becomes empty.
-   The saved reference and physical file remain present.
-2. Click **Save**. The production required-file validator rejects the empty value.
-3. Enable **Fail upload** and upload a PDF. The saved reference and files remain
-   present. Disable the failure and upload again. Only the draft reference changes.
-4. Enable **Fail save** and click **Save**. The previous saved reference remains.
-   The uploaded file and new draft remain available for retry.
-5. Disable the failure and click **Save**. The saved reference changes to the new
-   file. The old file remains in the library.
-6. Reset the fixture. Remove the reference and use **Select** to choose the other
-   PDF. The saved reference changes only after **Save**.
-7. Open the old file's library menu. **Delete** and **Rename** are absent.
+The browser verifies used Delete and Rename refusals, unused cleanup and retry,
+Save of a replacement followed by old-file cleanup, stale missing-media Save and
+draft preservation. Remove, Upload and Select still need a separate Save. Upload
+and Save failures preserve the previous saved reference and leave the draft
+available for retry.
 
-The fixture renders the real file editor, picker and file menu. Uploads, library
-reads and physical deletion use injected memory boundaries. Its separate Save
-button models the content-write boundary and invokes the real file validator.
-It does not exercise the production Entry save component or authenticated GitHub
-writes. Existing Entry save regressions run in the full downstream test suite.
+The fixture renders production file editor, picker, menu and Rename components.
+Injected in-memory API responses model the external write boundary. Its Save
+button invokes the real file validator. It does not claim authenticated GitHub
+write proof or replace the production Entry save regressions.
 
-The route and component checks are local evidence. They do not replace an
-authenticated private-sandbox write smoke, reviewed candidate VM verification,
-or the separate production rollout gates. Enable website configuration only
-after the supporting CMS revision is running.
+Local tests do not replace an authenticated private-sandbox Git write smoke,
+completed Codex review, reviewed candidate VM verification or production rollout
+gates. The local phase performs no push, publication, database migration or
+customer repository mutation. Rich-text/code references, technical `.pages.yml`
+changes and direct external Git writes remain outside this editorial guarantee.

@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { cmsGitFixture } from "./helpers/cms-git-fixture.mts";
 import ts from "typescript";
 
 import { mediaFields, optionalMedia, optionalObjectFixtures } from "../lib/dev-fixtures/optional-objects.ts";
@@ -143,88 +144,24 @@ test("object-list bounds, block discriminators and nested optional media retain 
 
 test("the normal save API omits empty containers and writes defaults for populated objects", async () => {
   const fields = optionalObjectFixtures.contact.fields;
-  const config = {
-    sha: "configuration-sha",
-    object: { content: [{ name: "contact", type: "file", path: "content/contact.json", format: "json", extension: "json", fields }] },
-  };
-  const writes: Record<string, any>[] = [];
-  let savedSource: Record<string, unknown> = {};
-  let session: any = { user: { id: "editor", name: "Editor" } };
-  let repoAllowed = true;
-  const octokit = { rest: { repos: {
-    get: async () => {
-      if (!repoAllowed) throw new Error("Repository access denied");
-      return { data: {} };
-    },
-    getContent: async () => ({ data: { type: "file", content: Buffer.from(JSON.stringify(savedSource)).toString("base64") } }),
-    createOrUpdateFileContents: async (input: Record<string, any>) => {
-      writes.push(input);
-      return { data: {
-        content: { type: "file", name: "contact.json", path: input.path, sha: "saved-sha", size: input.content.length },
-        commit: { sha: "commit-sha" },
-      } };
-    },
-  } } };
-  const routeLoad = productionLoader({
-    "next/headers": { headers: async () => new Headers() },
-    "@/lib/auth": { auth: { api: { getSession: async () => session } } },
-    "@/lib/github-account": { getGithubAccount: async () => ({ accessToken: "fixture-token" }) },
-    "@octokit/app": {},
-    "@/lib/utils/octokit": { createOctokitInstance: () => octokit },
-    "@/db": { db: { query: { collaboratorTable: { findFirst: async () => undefined } } } },
-    "@/lib/config-store": { getConfig: async () => config },
-    "@/lib/config": {},
-    "@/lib/github-cache-file": { updateFileCache: async () => {} },
-    "@/lib/github-media-metadata": {},
-  });
-  const route = routeLoad("app/api/[owner]/[repo]/[branch]/files/[path]/route.ts");
-  const save = (content: Record<string, unknown>, configSha = config.sha) => route.POST(
-    new Request("https://cms.example.test/api/fixture/repo/main/files/content%2Fcontact.json", {
-      method: "POST", headers: { "content-type": "application/json", origin: "https://cms.example.test", host: "cms.example.test" },
-      body: JSON.stringify({ type: "content", name: "contact", configSha, sha: "previous-sha", content }),
-    }),
-    { params: Promise.resolve({ owner: "fixture", repo: "repo", branch: "main", path: "content/contact.json" }) },
-  );
+  const config = { content: [{ name: "contact", type: "file", path: "content/contact.json", fields }] };
+  const f = cmsGitFixture(config, { "content/contact.json": {} });
+  const save = (content: Record<string, unknown>, data = {}) => f.save("content/contact.json", content, { name: "contact", ...data });
   assert.equal((await save(optionalObjectFixtures.contact.content)).status, 200);
-  assert.deepEqual(JSON.parse(Buffer.from(writes[0].content, "base64").toString()), optionalObjectFixtures.contact.content);
+  assert.deepEqual(f.json("content/contact.json"), optionalObjectFixtures.contact.content);
   assert.equal((await save({ title: "Image added", hero: { media: { src: "/media/photo.png" } } })).status, 200);
-  assert.deepEqual(JSON.parse(Buffer.from(writes[1].content, "base64").toString()), {
-    title: "Image added", hero: { media: { src: "/media/photo.png", role: "content", presentation: "cover" } },
-  });
+  assert.deepEqual(f.json("content/contact.json"), { title: "Image added", hero: { media: { src: "/media/photo.png", role: "content", presentation: "cover" } } });
   assert.equal((await save({ title: "Invalid media", hero: { media: { alt: "Missing source" } } })).status, 400);
   assert.equal((await save({ title: "Empty media", hero: { media: { src: "", alt: "" } }, listing: {} })).status, 200);
-  assert.deepEqual(JSON.parse(Buffer.from(writes[2].content, "base64").toString()), { title: "Empty media" });
-  assert.equal((await save({ title: "Stale configuration" }, "obsolete-sha")).status, 409);
-  session = null;
-  assert.equal((await save({ title: "Unauthorized" })).status, 401);
-  session = { user: { id: "editor" } };
-  repoAllowed = false;
-  assert.equal((await save({ title: "Forbidden" })).status, 403);
-  assert.equal(writes.length, 3);
+  assert.deepEqual(f.json("content/contact.json"), { title: "Empty media" });
+  assert.equal((await save({ title: "Stale configuration" }, { configSha: "obsolete-sha" })).status, 409);
+  f.signedIn = false; assert.equal((await save({ title: "Unauthorized" })).status, 401);
+  f.signedIn = true; f.allowed = false; assert.equal((await save({ title: "Forbidden" })).status, 403);
 
-  repoAllowed = true;
-  savedSource = {
-    title: "Original",
-    futureNull: null,
-    metadata: { summary: "", futureNull: null, futureEmpty: "", futureObject: {}, futureList: [] },
-    items: [{ title: "First", metadata: { summary: null, futureEmpty: "" } }, { title: "Second", future: "keep" }],
-  };
+  const source = { title: "Original", futureNull: null, metadata: { summary: "", futureNull: null, futureEmpty: "", futureObject: {}, futureList: [] }, items: [{ title: "First", metadata: { summary: null, futureEmpty: "" } }, { title: "Second", future: "keep" }] };
   const metadata = { name: "metadata", type: "object", fields: [{ name: "summary", type: "string" }] };
-  Object.assign(config.object.content[0], {
-    type: "collection", path: "content", filename: "{primary}.json",
-    view: { primary: "title" }, operations: { duplicate: true },
-    fields: [{ name: "title", type: "string", required: true }, metadata, {
-      name: "items", type: "object", list: true, fields: [{ name: "title", type: "string" }, metadata],
-    }],
-  });
-  const duplicated = await route.POST(new Request("https://cms.example.test/api/fixture/repo/main/files/content%2Foriginal.json", {
-    method: "POST", headers: { "content-type": "application/json", origin: "https://cms.example.test", host: "cms.example.test" },
-    body: JSON.stringify({ type: "content", name: "contact", configSha: config.sha, duplicate: { value: "Copy" } }),
-  }), { params: Promise.resolve({ owner: "fixture", repo: "repo", branch: "main", path: "content/original.json" }) });
-  assert.equal(duplicated.status, 200);
-  assert.deepEqual(JSON.parse(Buffer.from(writes[3].content, "base64").toString()), {
-    ...savedSource, title: "Copy",
-    metadata: { futureNull: null, futureEmpty: "", futureObject: {}, futureList: [] },
-    items: [{ title: "First", metadata: { futureEmpty: "" } }, { title: "Second", future: "keep" }],
-  });
+  const duplicate = cmsGitFixture({ content: [{ name: "contact", type: "collection", path: "content", filename: "{primary}.json", view: { primary: "title" }, operations: { duplicate: true }, fields: [{ name: "title", type: "string", required: true }, metadata, { name: "items", type: "object", list: true, fields: [{ name: "title", type: "string" }, metadata] }] }] }, { "content/original.json": source });
+  const response = await duplicate.save("content/original.json", undefined, { name: "contact", sha: undefined, duplicate: { value: "Copy" } });
+  assert.equal(response.status, 200, await response.text());
+  assert.deepEqual(duplicate.json("content/copy.json"), { ...source, title: "Copy", metadata: { futureNull: null, futureEmpty: "", futureObject: {}, futureList: [] }, items: [{ title: "First", metadata: { futureEmpty: "" } }, { title: "Second", future: "keep" }] });
 });

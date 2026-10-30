@@ -236,7 +236,7 @@ const swapPrefix = (
     || path.startsWith("http://")
     || path.startsWith("https://")
     || path.startsWith("data:image/")
-    || !path.startsWith(from)
+    || !(from === "" || path === from || path.startsWith(from.endsWith("/") ? from : `${from}/`))
   ) return path;
   
   let newPath;

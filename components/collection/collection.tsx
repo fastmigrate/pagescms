@@ -399,7 +399,7 @@ export function Collection({ name, path, request = fetch }: { name: string; path
   }, []);
 
   const handleConfirmRenameNode = useCallback(
-    (path: string, newPath: string) => {
+    (path: string, newPath: string, sha: string) => {
       try {
         const normalizedPath = normalizePath(path);
         const normalizedNewPath = normalizePath(newPath);
@@ -416,15 +416,16 @@ export function Collection({ name, path, request = fetch }: { name: string; path
                   type: "content",
                   name,
                   newPath: normalizedNewPath,
+                  sha,
                 }),
               },
             );
-            const data = await requireApiSuccess<any>(
+            const responseBody = await requireApiSuccess<any>(
               response,
               "Failed to rename file",
             );
 
-            resolve(data);
+            resolve(responseBody);
           } catch (error) {
             reject(error);
           }
@@ -560,6 +561,7 @@ export function Collection({ name, path, request = fetch }: { name: string; path
                             `.${schema.extension}`,
                             `/${schema.view?.node?.filename}`,
                           ),
+                          row.original.sha,
                         )
                       }
                     >

@@ -371,6 +371,7 @@ export function Entry({
                 type: "content",
                 name,
                 newPath,
+                sha,
               }),
             },
           );

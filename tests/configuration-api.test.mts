@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { cmsGitFixture } from "./helpers/cms-git-fixture.mts";
 import { readFileSync, existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
@@ -70,35 +71,14 @@ test("configuration API uses actual repository authorization and works with cach
   assert.equal(checks, 4);
 });
 
-test("content saves and save-time renames reject old or missing configuration before GitHub writes", async () => {
-  let writes = 0; let checks = 0;
-  const load = loadFixture({
-    "@/lib/session-server": { requireApiUserSession: async () => ({ user: { id: "u", githubUsername: "editor" } }) },
-    "@/lib/token": { getToken: async () => ({ token: "token" }) },
-    "@/lib/config-store": { getConfig: async (_owner: string, _repo: string, _branch: string, options: any) => {
-      assert.equal(options.sync, true); assert.equal(options.ttlMs, 0); checks++;
-      return { sha: "current", object: {} };
-    } },
-    "@/fields/registry": {}, "@/lib/config": {}, "@/lib/schema": {}, "@/lib/serialization": {},
-    "@/lib/operations": { isContentOperationAllowed: () => true },
-    "@/lib/utils/file": { normalizePath: (path: string) => path },
-    "@/lib/github-cache-file": {}, "@/lib/commit-message": {}, "@/lib/duplicate-entry": {},
-    "@/lib/github-media-metadata": {},
-    "@/lib/utils/octokit": { createOctokitInstance: () => { writes++; throw new Error("Unexpected GitHub write"); } },
-  });
-  for (const path of ["files/[path]/route.ts", "files/[path]/rename/route.ts"]) {
-    const { POST } = load(`app/api/[owner]/[repo]/[branch]/${path}`);
-    for (const configSha of [undefined, "old"]) {
-      const request = new Request("https://cms.test/api/o/r/main/files/content%2Fpage.json", {
-        method: "POST", headers: { host: "cms.test", origin: "https://cms.test" },
-        body: JSON.stringify({ type: "content", name: "pages", content: { title: "Draft" }, newPath: "content/new.json", configSha }),
-      });
-      const response = await POST(request, { params: Promise.resolve(params) });
-      assert.equal(response.status, 409);
-      assert.match((await response.json()).message, /Configuration changed/);
+test("content saves and save-time renames bind configuration to the immutable writer snapshot", async () => {
+  const f = cmsGitFixture({ content: [{ name: "pages", type: "collection", path: "content", filename: "{primary}.json", fields: [{ name: "title", type: "string" }] }] }, { "content/page.json": { title: "Saved" } });
+  for (const configSha of [undefined, "old"]) {
+    for (const response of [await f.save("content/page.json", { title: "Draft" }, { name: "pages", configSha }), await f.rename("content/page.json", "content/new.json", { type: "content", name: "pages", configSha })]) {
+      assert.equal(response.status, 409); assert.match((await response.json()).message, /Configuration changed/);
     }
   }
-  assert.equal(checks, 4); assert.equal(writes, 0);
+  assert.deepEqual(f.mutations, []);
 });
 
 test("content reads reject a configuration mismatch before fetching the entry", async () => {

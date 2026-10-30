@@ -5,7 +5,6 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const url = process.env.FIXTURE_URL || "http://127.0.0.1:4751/dev/fixtures/catalog-exchange";
-const expectProtected = process.env.EXPECT_MEDIA_PROTECTED !== "false";
 const originalPath = "media/catalogue-october.pdf";
 const selectedPath = "media/catalogue-november.pdf";
 const uploadedPath = "media/catalogue-december.pdf";
@@ -17,10 +16,30 @@ try {
   page.setDefaultTimeout(15_000);
   const errors = [];
   const apiRequests = [];
+  const unexpectedRequests = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.route("**/api/**", async route => {
-    apiRequests.push(`${route.request().method()} ${route.request().url()}`);
-    await route.abort();
+    const request = route.request();
+    const match = new URL(request.url()).pathname.match(/^\/api\/fixture\/catalogue\/main\/files\/(.+)\/rename$/);
+    if (request.method() !== "POST" || !match) {
+      unexpectedRequests.push(`${request.method()} ${request.url()}`);
+      await route.abort();
+      return;
+    }
+    const path = decodeURIComponent(match[1]);
+    const data = request.postDataJSON();
+    assert.equal(data.type, "media");
+    assert.equal(data.name, "catalogues");
+    assert.ok(data.sha);
+    const used = await page.getByTestId("saved-reference").textContent() === path;
+    apiRequests.push({ path, newPath: data.newPath, used });
+    await route.fulfill({
+      status: used ? 409 : 200,
+      contentType: "application/json",
+      body: JSON.stringify(used
+        ? { status: "error", message: "This file is used by Website settings / Catalogue (data/settings.json, catalogue). Save a replacement before deleting or renaming it." }
+        : { status: "success", message: "File renamed.", data: { path, newPath: data.newPath } }),
+    });
   });
   const saved = page.getByTestId("saved-reference");
   const draft = page.getByTestId("draft-reference");
@@ -44,6 +63,37 @@ try {
       console.error(await page.locator("main").innerText(), errors, apiRequests);
       throw error;
     }
+    assert.equal(await saved.textContent(), originalPath);
+    assert.equal(await referenceExists.textContent(), "yes");
+    assert.equal(await page.getByTestId("library-asset").count(), 2);
+  };
+  const deleteAsset = async name => {
+    await page.getByRole("button", { name: `Options for ${name}`, exact: true }).click();
+    await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Delete", exact: true }).click();
+  };
+  const renameAsset = async (name, newName) => {
+    const requestCount = apiRequests.length;
+    await page.getByRole("button", { name: `Options for ${name}`, exact: true }).click();
+    await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("textbox").fill(newName);
+    const response = page.waitForResponse(response => response.request().method() === "POST" && response.url().endsWith("/rename"));
+    await dialog.getByRole("button", { name: "Rename", exact: true }).click();
+    await response;
+    await dialog.waitFor({ state: "hidden" });
+    assert.equal(apiRequests.length, requestCount + 1);
+  };
+  const selectExisting = async () => {
+    await remove();
+    await page.getByRole("button", { name: "Select", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByText("catalogue-november.pdf", { exact: true }).click();
+    await dialog.getByRole("button", { name: "Select", exact: true }).click();
+    await page.waitForFunction(path => document.querySelector('[data-testid="draft-reference"]')?.textContent === path, selectedPath);
+  };
+  const expectUsedMessage = async () => {
+    await page.getByText(/This file is used by Website settings \/ Catalogue/).first().waitFor();
     assert.equal(await saved.textContent(), originalPath);
     assert.equal(await referenceExists.textContent(), "yes");
     assert.equal(await page.getByTestId("library-asset").count(), 2);
@@ -84,38 +134,69 @@ try {
   console.log("PASS: Remove changes only the draft; required validation, upload failure, save failure and retry preserve the saved reference and old PDF");
 
   await reset();
-  await remove();
-  await page.getByRole("button", { name: "Select", exact: true }).click();
-  const dialog = page.getByRole("dialog");
-  await dialog.getByText("catalogue-november.pdf", { exact: true }).click();
-  await dialog.getByRole("button", { name: "Select", exact: true }).click();
-  await page.waitForFunction(path => document.querySelector('[data-testid="draft-reference"]')?.textContent === path, selectedPath);
+  await selectExisting();
   assert.equal(await saved.textContent(), originalPath);
   await save.click();
   await page.waitForFunction(path => document.querySelector('[data-testid="saved-reference"]')?.textContent === path, selectedPath);
   assert.equal(await page.getByTestId("library-asset").count(), 2);
   console.log("PASS: selecting an existing PDF changes only the draft until the separate Save boundary");
+  await deleteAsset("catalogue-october.pdf");
+  await page.getByRole("button", { name: "Options for catalogue-october.pdf", exact: true }).waitFor({ state: "detached" });
+  assert.equal(await saved.textContent(), selectedPath);
+  assert.equal(await referenceExists.textContent(), "yes");
+  assert.equal(await page.getByTestId("library-asset").count(), 1);
+  console.log("PASS: saving a replacement permits deleting the previous catalogue");
 
   await reset();
-  await page.getByRole("button", { name: "Options for catalogue-october.pdf", exact: true }).click();
-  const menu = page.getByRole("menu");
-  await menu.waitFor();
-  if (expectProtected) {
-    assert.equal(await menu.getByRole("menuitem", { name: "Delete", exact: true }).count(), 0);
-    assert.equal(await menu.getByRole("menuitem", { name: "Rename", exact: true }).count(), 0);
-    console.log("PASS: protected catalogue menu exposes neither physical Delete nor Rename");
-  } else {
-    assert.equal(await menu.getByRole("menuitem", { name: "Rename", exact: true }).count(), 1);
-    await menu.getByRole("menuitem", { name: "Delete", exact: true }).click();
-    await page.getByRole("alertdialog").getByRole("button", { name: "Delete", exact: true }).click();
-    await page.waitForFunction(() => document.querySelector('[data-testid="saved-reference-exists"]')?.textContent === "no");
-    assert.equal(await saved.textContent(), originalPath);
-    console.log("BASELINE: physical Delete removes the old PDF immediately and leaves the saved reference missing");
-  }
+  await deleteAsset("catalogue-october.pdf");
+  await expectUsedMessage();
+  await renameAsset("catalogue-october.pdf", "catalogue-renamed.pdf");
+  await expectUsedMessage();
+  assert.equal(apiRequests.at(-1).used, true);
+  await remove();
+  await deleteAsset("catalogue-october.pdf");
+  await expectUsedMessage();
+  assert.equal(await draft.textContent(), "(empty)");
+  console.log("PASS: referenced Delete and Rename show the referring entry and field; unsaved Remove preserves protection and the draft");
+
+  await reset();
+  await page.getByLabel("Fail delete", { exact: true }).check();
+  await deleteAsset("catalogue-november.pdf");
+  await page.getByText("Delete failed. Existing files are unchanged.", { exact: true }).first().waitFor();
+  assert.equal(await page.getByTestId("library-asset").count(), 2);
+  await page.getByLabel("Fail delete", { exact: true }).uncheck();
+  await deleteAsset("catalogue-november.pdf");
+  await page.getByRole("button", { name: "Options for catalogue-november.pdf", exact: true }).waitFor({ state: "detached" });
+  assert.equal(await referenceExists.textContent(), "yes");
+  console.log("PASS: unused Delete stays available and a failed attempt is retryable");
+
+  await reset();
+  await renameAsset("catalogue-november.pdf", "catalogue-next.pdf");
+  await page.getByRole("button", { name: "Options for catalogue-next.pdf", exact: true }).waitFor();
+  assert.equal(apiRequests.at(-1).used, false);
+  assert.equal(await saved.textContent(), originalPath);
+  assert.equal(await referenceExists.textContent(), "yes");
+  console.log("PASS: unused Rename stays available through the production request and response handling");
+
+  await reset();
+  await selectExisting();
+  await deleteAsset("catalogue-november.pdf");
+  await page.getByRole("button", { name: "Options for catalogue-november.pdf", exact: true }).waitFor({ state: "detached" });
+  await save.click();
+  await page.getByText("The selected file no longer exists. Select or upload a replacement before saving.", { exact: true }).waitFor();
+  assert.equal(await draft.textContent(), selectedPath);
+  assert.equal(await saved.textContent(), originalPath);
+  assert.equal(await referenceExists.textContent(), "yes");
+  console.log("PASS: a missing-file Save retains the stale draft and the previous valid reference");
+
+  await reset();
+  await deleteAsset("catalogue-october.pdf");
+  await expectUsedMessage();
   if (process.env.AFTER_IMAGE) await page.screenshot({ path: process.env.AFTER_IMAGE, fullPage: true });
-  assert.deepEqual(apiRequests, []);
+  assert.equal(apiRequests.length, 2);
+  assert.deepEqual(unexpectedRequests, []);
   assert.deepEqual(errors, []);
-  console.log("PASS: all exercised production components used injected in-memory boundaries without API requests");
+  console.log("PASS: all external requests stayed inside the isolated fixture boundaries; no page errors");
   await context.close();
 } finally {
   await browser.close();

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { cmsGitFixture } from "./helpers/cms-git-fixture.mts";
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
@@ -67,88 +68,35 @@ test('both file write methods retain origin checks including image extensions', 
 });
 
 test('actual file API rejects excess media and malformed bodies before any GitHub write', async () => {
-  const limits = await import('../lib/upload-limits.ts');
-  let writes = 0;
-  const mocks: Record<string, any> = {
-    '@/lib/upload-limits': limits,
-    '@/lib/media-metadata': await import('../lib/media-metadata.ts'),
-    '@/lib/session-server': {requireApiUserSession: async () => ({user: {id: 'test'}})},
-    '@/lib/token': {getToken: async () => ({token: 'test'})},
-    '@/lib/config-store': {getConfig: async () => ({object: {}})},
-    '@/lib/schema': {getSchemaByName: () => ({input: 'images', extensions: ['jpg']})},
-    '@/lib/utils/file': {normalizePath: (p: string) => p, getFileName: (p: string) => p.split('/').pop(), getFileExtension: () => 'jpg'},
-    '@/lib/utils/octokit': {createOctokitInstance: () => {writes++; throw new Error('Unexpected GitHub access');}},
-    '@/lib/api-error': {toErrorResponse: (e: any) => Response.json({status: 'error', message: e.message}, {status: e.status ?? 500})},
-  };
-  const source = readFileSync(new URL('../app/api/[owner]/[repo]/[branch]/files/[path]/route.ts', import.meta.url), 'utf8');
-  const compiled = ts.transpileModule(source, {compilerOptions: {module: ts.ModuleKind.CommonJS, esModuleInterop: true}}).outputText;
-  const route = {exports: {} as any};
-  new Function('require', 'module', 'exports', compiled)((id: string) => mocks[id] ?? {}, route, route.exports);
-  const context = {params: Promise.resolve({owner: 'o', repo: 'r', branch: 'main', path: 'images/test.jpg'})};
-  const make = (body: string, origin = 'https://cms.test') => new Request('https://cms.test/api/o/r/main/files/images%2Ftest.jpg', {method: 'POST', headers: {host: 'cms.test', origin}, body});
-  const excess = JSON.stringify({type: 'media', name: 'works_images', content: Buffer.alloc(MAX_UPLOAD_BYTES + 1).toString('base64')});
-  assert.equal((await route.exports.POST(make(excess), context)).status, 413);
-  assert.equal((await route.exports.POST(make('{"content":"cut'), context)).status, 400);
-  assert.equal((await route.exports.POST(make('{}', 'https://evil.test'), context)).status, 403);
-  assert.equal((await route.exports.DELETE(make('{}', 'https://evil.test'), context)).status, 403);
-  assert.equal(writes, 0);
+  const f = cmsGitFixture({ media: [{ name: "assets", input: "images", output: "/images" }] });
+  assert.equal((await f.save("images/test.jpg", Buffer.alloc(MAX_UPLOAD_BYTES + 1).toString("base64"), { type: "media", name: "assets", sha: undefined })).status, 413);
+  const route = f.load("app/api/[owner]/[repo]/[branch]/files/[path]/route.ts");
+  const request = (body: string, origin = "https://cms.test") => new Request("https://cms.test/api/fixture/private/main/files/images%2Ftest.jpg", { method: "POST", headers: { host: "cms.test", origin }, body });
+  const context = { params: Promise.resolve({ owner: "fixture", repo: "private", branch: "main", path: "images/test.jpg" }) };
+  assert.equal((await route.POST(request('{"content":"cut'), context)).status, 400);
+  assert.equal((await route.POST(request('{}', 'https://evil.test'), context)).status, 403);
+  assert.equal((await f.remove("images/test.jpg", {}, "https://evil.test")).status, 403);
+  assert.deepEqual(f.mutations, []);
 });
 
 test('actual media upload and replacement routes reject manual relationships before mutation', async () => {
- let writes=0;
- const errors={createHttpError:(message:string,status:number)=>Object.assign(new Error(message),{status}),toErrorResponse:(error:any)=>Response.json({message:error.message},{status:error.status??500})};
- const mocks:Record<string,any>={
-  '@/lib/upload-limits':await import('../lib/upload-limits.ts'),'@/lib/media-metadata':await import('../lib/media-metadata.ts'),
-  '@/lib/session-server':{requireApiUserSession:async()=>({user:{id:'test'}})},'@/lib/token':{getToken:async()=>({token:'test'})},
-  '@/lib/config-store':{getConfig:async()=>({object:{mediaMetadata:'data/media.json'}})},'@/lib/utils/file':{normalizePath:(path:string)=>path},'@/lib/api-error':errors,
-  '@/lib/github-media-metadata':{mutateMediaMetadata:async()=>{writes++;throw new Error('Unexpected mutation');}},
-  '@/lib/utils/octokit':{createOctokitInstance:()=>{writes++;throw new Error('Unexpected GitHub access');}},
- };
- const compiled=ts.transpileModule(readFileSync(new URL('../app/api/[owner]/[repo]/[branch]/files/[path]/route.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,esModuleInterop:true}}).outputText;
- const route={exports:{} as any};new Function('require','module','exports',compiled)((id:string)=>mocks[id]??{},route,route.exports);
- for(const sha of [undefined,'a'.repeat(40)])for(const derivedFrom of ['images/source.jpg',null]) {
-  const request=new Request('https://cms.test/api/o/r/main/files/images%2Ftest.jpg',{method:'POST',headers:{host:'cms.test',origin:'https://cms.test'},body:JSON.stringify({type:'media',name:'images',content:Buffer.from('new').toString('base64'),classification:'generated',sha,derivedFrom})});
-  assert.equal((await route.exports.POST(request,{params:Promise.resolve({owner:'o',repo:'r',branch:'main',path:'images/test.jpg'})})).status,400);
- }
- assert.equal(writes,0);
+  const f = cmsGitFixture({ mediaMetadata: "data/media.json", media: [{ name: "assets", input: "images", output: "/images" }] }, { "images/test.jpg": "existing" });
+  for (const sha of [undefined, f.files.get("images/test.jpg")!.sha]) for (const derivedFrom of ["images/source.jpg", null]) {
+    const result = await f.save("images/test.jpg", Buffer.from("new").toString("base64"), { type: "media", name: "assets", sha, classification: "generated", derivedFrom });
+    assert.equal(result.status, 400);
+  }
+  assert.deepEqual(f.mutations, []);
 });
 
 test('generic content/media writes cannot overwrite, delete or rename the reserved manifest', async () => {
-  const mocks: Record<string, any> = {
-    '@/lib/upload-limits': await import('../lib/upload-limits.ts'),
-    '@/lib/media-metadata': await import('../lib/media-metadata.ts'),
-    '@/lib/session-server': {requireApiUserSession: async () => ({user: {id: 'test'}})},
-    '@/lib/token': {getToken: async () => ({token: 'test'})},
-    '@/lib/config-store': {getConfig: async () => ({object: {mediaMetadata: 'data/media.json'}})},
-    '@/lib/operations': {isContentOperationAllowed: () => true},
-    '@/lib/utils/file': {normalizePath: (p: string) => p},
-    '@/lib/schema': {getSchemaByName: () => {throw new Error('Reserved paths must be rejected before schema access');}},
-    '@/lib/utils/octokit': {createOctokitInstance: () => {throw new Error('Reserved paths must not reach GitHub');}},
-    '@/lib/api-error': {
-      createHttpError: (message: string, status: number) => Object.assign(new Error(message), {status}),
-      toErrorResponse: (e: any) => Response.json({message: e.message}, {status: e.status ?? 500}),
-    },
-  };
-  const load = (suffix: string) => {
-    const source = readFileSync(new URL(`../app/api/[owner]/[repo]/[branch]/files/[path]/${suffix}route.ts`, import.meta.url), 'utf8');
-    const compiled = ts.transpileModule(source, {compilerOptions: {module: ts.ModuleKind.CommonJS, esModuleInterop: true}}).outputText;
-    const route = {exports: {} as any};
-    new Function('require', 'module', 'exports', compiled)((id: string) => mocks[id] ?? {}, route, route.exports);
-    return route.exports;
-  };
-  const file = load(''); const rename = load('rename/');
-  const context = (path: string) => ({params: Promise.resolve({owner: 'o', repo: 'r', branch: 'main', path})});
-  const request = (method: string, body?: any) => {
-    const url = new URL('https://cms.test/api/o/r/main/files/data%2Fmedia.json?type=content&name=entries&sha=abc');
-    const req = new Request(url, {method, headers: {host: 'cms.test', origin: 'https://cms.test'}, ...(body ? {body: JSON.stringify(body)} : {})});
-    Object.defineProperty(req, 'nextUrl', {value: url}); return req;
-  };
-  for (const type of ['content', 'media']) {
-    assert.equal((await file.POST(request('POST', {type, name: 'entries', content: '{}'}), context('data/media.json'))).status, 400);
-    assert.equal((await file.DELETE(request('DELETE'), context('data/media.json'))).status, 400);
-    assert.equal((await rename.POST(request('POST', {type, name: 'entries', newPath: 'data/other.json'}), context('data/media.json'))).status, 400);
-    assert.equal((await rename.POST(request('POST', {type, name: 'entries', newPath: 'data/media.json'}), context('data/other.json'))).status, 400);
+  const f = cmsGitFixture({ mediaMetadata: "data/media.json", media: [{ name: "assets", input: "", output: "/" }], content: [{ name: "entries", type: "collection", path: "data", filename: "{primary}.json" }] }, { "data/media.json": { version: 1, assets: {} }, "data/other.json": {} });
+  for (const type of ["content", "media"]) {
+    assert.equal((await f.save("data/media.json", "{}", { type, name: type === "media" ? "assets" : "entries" })).status, 400);
+    assert.equal((await f.remove("data/media.json", { type, name: type === "media" ? "assets" : "entries" })).status, 400);
+    assert.equal((await f.rename("data/media.json", "data/third.json", { type, name: type === "media" ? "assets" : "entries" })).status, 400);
+    assert.equal((await f.rename("data/other.json", "data/media.json", { type, name: type === "media" ? "assets" : "entries" })).status, 400);
   }
+  assert.deepEqual(f.mutations, []);
 });
 
 test('rich-text paste/drop/slash upload failures expose the size explanation through a toast', async () => {

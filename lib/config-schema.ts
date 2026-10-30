@@ -210,10 +210,6 @@ const MediaConfigObject = z
         message: "'actions' must be an array of action definitions.",
       })
       .optional(),
-    operations: z.object({
-      delete: z.boolean().optional(),
-      rename: z.boolean().optional(),
-    }).strict().optional(),
   })
   .strict();
 

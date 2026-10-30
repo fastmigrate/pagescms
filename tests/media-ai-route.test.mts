@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { cmsGitFixture } from './helpers/cms-git-fixture.mts';
 import {createRequire} from 'node:module';
 import {readFileSync} from 'node:fs';
 import ts from 'typescript';
@@ -29,22 +30,12 @@ test('actual AI route rejects absent session and denied private repository befor
 });
 
 test('cached library listing can reclassify externally replaced bytes using the fresh tree SHA', async () => {
- const oldSha='a'.repeat(40),currentSha='b'.repeat(40),manifestSha='c'.repeat(40);
- const path='media/image.jpg',bytes='externally replaced image';
+ const oldSha='a'.repeat(40),path='media/image.jpg',bytes='externally replaced image';
+ const f=cmsGitFixture({mediaMetadata:'data/media.json',media:[{name:'images',input:'media',output:'/media'}]},{[path]:bytes});
+ const currentSha=f.files.get(path)!.sha;
  const document={version:1,assets:{[path]:{classification:'generated',sourceSha256:metadata.fingerprint('old image'),sourceGitSha:oldSha}}};
- let written:any,commits=0;
- const octokit={rest:{repos:{getContent:async()=>({data:{type:'file',sha:manifestSha,content:Buffer.from(JSON.stringify(document)).toString('base64')}})},git:{
-  getRef:async()=>({data:{object:{sha:'head'}}}),getCommit:async()=>({data:{tree:{sha:'base'}}}),
-  getTree:async()=>({data:{truncated:false,tree:[{path,type:'blob',mode:'100644',sha:currentSha},{path:'data/media.json',type:'blob',mode:'100644',sha:manifestSha}]}}),
-  getBlob:async({file_sha}:any)=>({data:{content:Buffer.from(file_sha===manifestSha ? JSON.stringify(document) : bytes).toString('base64')}}),
-  createBlob:async({content}:any)=>{written=JSON.parse(content);return {data:{sha:'d'.repeat(40)}};},
-  createTree:async()=>({data:{sha:'new-tree'}}),createCommit:async()=>({data:{sha:'new-head'}}),
-  updateRef:async({force}:any)=>{assert.equal(force,false);commits++;},
- }}};
- const helper=load('lib/github-media-metadata.ts',{
-  '@/lib/utils/octokit':{createOctokitInstance:()=>octokit},'@/lib/media-metadata':metadata,'@/lib/api-error':load('lib/api-error.ts',{}),
-  '@/lib/github-cache-file':{setBranchHeadSha:async()=>{}},'@/lib/commit-message':{buildCommitTokens:(v:any)=>v,resolveCommitMessage:()=> 'Classify image'},
- });
+ f.externalCommit({'data/media.json':document});
+ const helper=f.load('lib/github-media-metadata.ts');
  const listing=load('app/api/[owner]/[repo]/[branch]/media/[name]/[path]/route.ts',{
   '@/lib/github-media-metadata':helper,'@/lib/media-metadata':metadata,'@/lib/api-error':load('lib/api-error.ts',{}),
   '@/lib/api-repo-context':{getRepoReadContext:async()=>({token:'test',config:{object:{mediaMetadata:'data/media.json',media:[{name:'images',input:'media'}]}}})},
@@ -56,10 +47,11 @@ test('cached library listing can reclassify externally replaced bytes using the 
  const {data:[item]}=await response.json();assert.equal(item.ai.stale,true);assert.equal(item.sha,currentSha);
  const writer=routeFixture({mutation:helper.mutateMediaMetadata});
  const saved=await writer.post(writer.request({sha:item.sha,revision:item.ai.revision,classification:'modified'}),writer.context());
- assert.equal(saved.status,200);assert.equal(commits,1);
+ assert.equal(saved.status,200,await saved.text());assert.equal(f.published(),1);
+ const written=f.json('data/media.json');
  assert.equal(written.assets[path].sourceGitSha,currentSha);assert.equal(written.assets[path].sourceSha256,metadata.fingerprint(bytes));assert.equal(written.assets[path].classification,'modified');
  const stale=await writer.post(writer.request({sha:oldSha,revision:item.ai.revision,classification:'modified'}),writer.context());
- assert.equal(stale.status,409);assert.equal(commits,1);
+ assert.equal(stale.status,409);assert.equal(f.published(),1);
 });
 test('actual AI route rejects origin, malformed JSON, sibling/traversal and absent revisions',async()=>{
  const f=routeFixture();

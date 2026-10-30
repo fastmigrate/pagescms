@@ -1,6 +1,5 @@
 type ContentOperation = "create" | "rename" | "delete" | "duplicate";
 type ContentScope = "collection" | "file" | "settings";
-type MediaOperation = "delete" | "rename";
 
 type ContentOperations = Record<ContentOperation, boolean>;
 
@@ -66,26 +65,8 @@ const isContentOperationAllowed = (
   },
 ) => resolveContentOperations(options)[operation];
 
-// Callers supply normalized repository paths and normalized media input roots.
-const isMediaOperationAllowed = (
-  operation: MediaOperation,
-  { configObject, paths }: {
-    configObject?: Record<string, any> | null;
-    paths: string[];
-  },
-) => {
-  const media = configObject?.media;
-  if (!Array.isArray(media)) return true;
-
-  return !media.some((source: { input: string; operations?: Partial<Record<MediaOperation, boolean>> }) => (
-    source.operations?.[operation] === false
-    && paths.some(path => source.input === "" || path === source.input || path.startsWith(`${source.input}/`))
-  ));
-};
-
 export {
   contentOperationDefaults,
   isContentOperationAllowed,
-  isMediaOperationAllowed,
   resolveContentOperations,
 };

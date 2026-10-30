@@ -14,7 +14,7 @@ const originalPath = "media/catalogue-october.pdf";
 const selectedPath = "media/catalogue-november.pdf";
 const config: Config = {
   owner: "fixture", repo: "catalogue", branch: "main", sha: "fixture-config", version: "fixture",
-  object: { media: [{ name: "catalogues", input: "media", output: "/media", extensions: ["pdf"], rename: false, operations: { delete: false, rename: false } }] },
+  object: { media: [{ name: "catalogues", input: "media", output: "/media", extensions: ["pdf"], rename: false }] },
 };
 const initialAssets: MediaItem[] = [originalPath, selectedPath].map(path => ({
   type: "file", name: path.split("/").pop()!, path, extension: "pdf", sha: `fixture-${path}`, size: 16,
@@ -47,7 +47,7 @@ export function CatalogExchangeFixture() {
     <ConfigProvider value={config} loadConfig={async () => config}>
       <main data-fixture-ready={ready} className="mx-auto max-w-3xl space-y-6 p-8">
         <h1 className="text-2xl font-semibold">Catalogue exchange fixture</h1>
-        <p>Production file field and library menu with in-memory assets. Remove changes the draft reference. The modeled Save boundary uses the production required-file validator. Library Delete removes a physical asset immediately.</p>
+        <p>Production file field and library actions with in-memory API boundaries. Remove changes the draft reference. Saved references protect files. Unused files remain available for cleanup. Route tests verify the server guard separately.</p>
         <div className="flex flex-wrap gap-4 text-sm">
           <label><input type="checkbox" checked={failUpload} onChange={event => setFailUpload(event.target.checked)} /> Fail upload</label>
           <label><input type="checkbox" checked={failSave} onChange={event => setFailSave(event.target.checked)} /> Fail save</label>
@@ -70,6 +70,10 @@ export function CatalogExchangeFixture() {
             if (!result.success) { setMessage(result.error.issues[0].message); return; }
             record(`save ${draft ?? "(empty)"}`);
             if (failSave) { setMessage("Save failed. The saved reference is unchanged."); return; }
+            if (draft && !assets.some(asset => asset.path === draft)) {
+              setMessage("The selected file no longer exists. Select or upload a replacement before saving.");
+              return;
+            }
             setSaved(draft);
             setMessage("Reference saved.");
           }}>Save</Button>
@@ -87,8 +91,12 @@ export function CatalogExchangeFixture() {
             <FileOptions path={asset.path} sha={asset.sha!} type="media" name="catalogues" deleteFile={async path => {
               record(`delete ${path}`);
               if (failDelete) throw new Error("Delete failed. Existing files are unchanged.");
+              if (saved === path) throw new Error("This file is used by Website settings / Catalogue (data/settings.json, catalogue). Save a replacement before deleting or renaming it.");
               setAssets(previous => previous.filter(item => item.path !== path));
               return { message: `Deleted ${path}` };
+            }} onRename={(oldPath, newPath) => {
+              record(`rename ${oldPath} ${newPath}`);
+              setAssets(previous => previous.map(item => item.path === oldPath ? { ...item, path: newPath, name: newPath.split("/").pop()! } : item));
             }}><Button type="button" variant="outline" aria-label={`Options for ${asset.name}`}>Options</Button></FileOptions>
           </div>)}
         </section>
