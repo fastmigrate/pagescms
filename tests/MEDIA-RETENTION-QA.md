@@ -71,9 +71,10 @@ then content Save refuses a missing replacement. Newer edits stay visible and
 the recovery download retains the text, reference and acknowledged filename.
 Retry saves to that filename without repeating Rename. Delayed stale or failed
 destination reads preserve the draft, including failures received after the
-retry succeeds. The code
-mode checks editor state only; it does not extend typed media-reference checks
-to code content.
+retry succeeds. Create collision coverage observes both SWR consumers and checks
+that only the returned suffixed path receives the new entry, while the original
+entry keeps its content and revision. The code mode checks editor state only; it
+does not extend typed media-reference checks to code content.
 
 Local tests do not replace an authenticated private-sandbox Git write smoke,
 completed Codex review, reviewed candidate VM verification or production rollout

@@ -10,6 +10,7 @@ const browser = await chromium.launch({ headless: true, ...(process.env.CHROME_P
 
 try {
   for (const scenario of [
+    { mode: "create" },
     { mode: "object" },
     { mode: "list" },
     { mode: "code" },
@@ -44,6 +45,30 @@ try {
     };
 
     await page.goto(`${baseUrl}?mode=${mode}`, { waitUntil: "domcontentloaded", timeout: 90_000 });
+    if (mode === "create") {
+      await title.waitFor({ timeout: 90_000 });
+      const cacheEntry = async (label) => JSON.parse(await page.getByLabel(label, { exact: true }).textContent());
+      await page.waitForFunction(() => JSON.parse(document.querySelector('[aria-label="Original entry cache"]').textContent)?.sha === "fixture-original");
+      const original = { path: "content/original.json", name: "original.json", sha: "fixture-original", contentObject: { title: "Original saved title" } };
+      assert.deepEqual(await cacheEntry("Original entry cache"), original);
+      assert.equal(await cacheEntry("Created entry cache"), null);
+      await title.fill("New entry title");
+      await filename.fill("original.json");
+      await save.click();
+      const destination = "/fixture/entry-create-collision/main/collection/articles/edit/content%2Foriginal-1.json";
+      await page.getByLabel("Navigation target", { exact: true }).filter({ hasText: destination }).waitFor();
+      assert.deepEqual(await writes(), [{ path: "content/original.json", body: {
+        configSha: "fixture-config", type: "content", name: "articles", content: { title: "New entry title" },
+      } }]);
+      assert.deepEqual(await cacheEntry("Original entry cache"), original, "creating a colliding filename must preserve the existing entry cache");
+      assert.deepEqual(await cacheEntry("Created entry cache"), {
+        path: "content/original-1.json", name: "original-1.json", sha: "fixture-created", contentObject: { title: "New entry title" },
+      }, "the accepted entry must seed the allocated filename cache");
+      assert.deepEqual(errors, []);
+      console.log("PASS: filename collision preserves the original entry cache and seeds the returned suffixed path before navigation");
+      await context.close();
+      continue;
+    }
     await title.waitFor({ timeout: 90_000 });
     await page.waitForFunction(() => document.querySelector('button[aria-label="Save"]')?.disabled);
     if (failRead || lateReadFailure) await page.getByLabel("Fail destination read", { exact: true }).check();

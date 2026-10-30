@@ -407,7 +407,7 @@ export function Entry({
         
         const savedEntry = { ...data.data, contentObject: schema?.list === true ? contentObject.listWrapper : contentObject };
         // The accepted write supersedes any destination read started by the rename.
-        await mutate(getEntryApiUrl(savePath), savedEntry, { revalidate: false });
+        await mutate(getEntryApiUrl(data.data.path), savedEntry, { revalidate: false });
         if (data.data.sha !== sha) setSha(data.data.sha);
         if (submitStartChangeVersion === changeVersionRef.current) {
           editsRef.current = false;

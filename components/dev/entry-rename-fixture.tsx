@@ -3,13 +3,13 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
-import { SWRConfig, type Middleware } from "swr";
+import useSWR, { SWRConfig, type Middleware } from "swr";
 import { Entry } from "@/components/entry/entry";
 import { RepoHeaderProvider, useRepoHeaderState } from "@/components/repo/repo-header-context";
 import { Button } from "@/components/ui/button";
 import { ConfigProvider } from "@/contexts/config-context";
 import type { Config } from "@/types/config";
-import type { MediaItem } from "@/types/api";
+import type { EntryData, MediaItem } from "@/types/api";
 
 type Mode = "object" | "list" | "code";
 type Write = { operation: "rename" | "save"; path: string; body: Record<string, unknown>; status: number };
@@ -19,6 +19,68 @@ const media = ["old", "missing", "replacement"].map<MediaItem>((name) => ({
 
 function FixtureHeader() {
   return <div>{useRepoHeaderState().header}</div>;
+}
+
+const collisionConfig: Config = {
+  owner: "fixture", repo: "entry-create-collision", branch: "main", sha: "fixture-config", version: "3.0",
+  object: { content: [{
+    name: "articles", type: "collection", path: "content", format: "json", extension: "json", filename: "{primary}.json", filenameField: true,
+    fields: [{ name: "title", label: "Title", type: "string" }],
+  }] },
+};
+const originalEntry: EntryData = {
+  path: "content/original.json", name: "original.json", sha: "fixture-original", contentObject: { title: "Original saved title" },
+};
+const allocatedPath = "content/original-1.json";
+const collisionEntryUrl = (path: string) => `/api/fixture/entry-create-collision/main/entries/${encodeURIComponent(path)}?name=articles&configSha=fixture-config`;
+const loadCollisionConfig = async () => collisionConfig;
+
+function CollisionCacheEntries() {
+  const { data: original } = useSWR(collisionEntryUrl(originalEntry.path), async () => originalEntry, { revalidateOnFocus: false });
+  const { data: created } = useSWR<EntryData>(collisionEntryUrl(allocatedPath), null);
+  return <>
+    <pre aria-label="Original entry cache">{JSON.stringify(original ?? null)}</pre>
+    <pre aria-label="Created entry cache">{JSON.stringify(created ?? null)}</pre>
+  </>;
+}
+
+export function EntryCreateCollisionFixture() {
+  const [writes, setWrites] = useState<{ path: string; body: Record<string, unknown> }[]>([]);
+  const [navigation, setNavigation] = useState("");
+  const router = useRouter();
+  const fixtureRouter = useMemo(() => ({ ...router, replace: setNavigation, push: setNavigation }), [router]);
+  const request = useCallback<typeof fetch>(async (input, init) => {
+    const url = new URL(String(input), "http://fixture.local");
+    if (init?.method !== "POST") throw new Error(`Unexpected fixture request ${url.pathname}`);
+    const body = JSON.parse(String(init.body));
+    const path = decodeURIComponent(url.pathname.split("/files/")[1]);
+    if (path !== originalEntry.path || body.sha != null || body.configSha !== collisionConfig.sha) {
+      return Response.json({ status: "error", message: "Fixture create conflict" }, { status: 409 });
+    }
+    setWrites((history) => [...history, { path, body }]);
+    return Response.json({ status: "success", message: "Created fixture", data: {
+      path: allocatedPath, name: "original-1.json", sha: "fixture-created",
+    } });
+  }, []);
+
+  return <SWRConfig value={{ provider: () => new Map(), shouldRetryOnError: false }}>
+    <AppRouterContext.Provider value={fixtureRouter}>
+      <ConfigProvider value={collisionConfig} loadConfig={loadCollisionConfig}>
+        <RepoHeaderProvider>
+          <main className="mx-auto grid max-w-5xl gap-6 px-6 py-8">
+            <h1 className="text-2xl font-semibold">Entry create filename collision</h1>
+            <section className="grid gap-6 rounded-lg border p-5">
+              <FixtureHeader />
+              <Entry name="articles" request={request} />
+            </section>
+            <CollisionCacheEntries />
+            <pre aria-label="Write history">{JSON.stringify(writes)}</pre>
+            <p aria-label="Navigation target">{navigation}</p>
+          </main>
+        </RepoHeaderProvider>
+      </ConfigProvider>
+    </AppRouterContext.Provider>
+  </SWRConfig>;
 }
 
 export function EntryRenameFixture({ mode }: { mode: Mode }) {

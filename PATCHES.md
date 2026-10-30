@@ -337,7 +337,9 @@ protect an asset. Content Save checks the final serialized values and refuses
 missing media while retaining the draft. External URLs and media-disabled
 web-root URLs without a repository mapping are outside this check.
 If filename Rename succeeds before content Save fails, the editor retains the
-current draft and retries Save at the acknowledged filename.
+current draft and retries Save at the acknowledged filename. Accepted saves
+populate the cache under the returned file path, including an allocated suffix
+when a new entry requests an existing filename.
 
 Ordinary file Save, Delete and Rename read a fresh Git ref, commit, full tree and
 configuration blob. Duplicate and merge reads use that same immutable snapshot.
