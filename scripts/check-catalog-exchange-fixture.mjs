@@ -50,6 +50,7 @@ try {
   };
 
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 90_000 });
+  await page.locator('main[data-fixture-ready="true"]').waitFor({ timeout: 90_000 });
   await page.getByRole("button", { name: "Reset fixture", exact: true }).waitFor({ timeout: 90_000 });
   await reset();
   if (process.env.BEFORE_IMAGE) await page.screenshot({ path: process.env.BEFORE_IMAGE, fullPage: true });
@@ -59,7 +60,7 @@ try {
   assert.equal(await saved.textContent(), originalPath);
   await page.getByLabel("Fail upload", { exact: true }).check();
   await upload();
-  await page.getByText("Upload failed. Existing files are unchanged.", { exact: true }).waitFor();
+  await page.getByText("Upload failed. Existing files are unchanged.", { exact: true }).first().waitFor();
   assert.equal(await draft.textContent(), "(empty)");
   assert.equal(await referenceExists.textContent(), "yes");
   assert.equal(await page.getByTestId("library-asset").count(), 2);

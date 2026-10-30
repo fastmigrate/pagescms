@@ -5,6 +5,7 @@ import { useConfig } from "@/contexts/config-context";
 import { getParentPath, getRelativePath, joinPathSegments, normalizePath } from "@/lib/utils/file";
 import { getSchemaByName } from "@/lib/schema";
 import { requireApiSuccess } from "@/lib/api-client";
+import { isMediaOperationAllowed } from "@/lib/operations";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -70,8 +71,10 @@ export function FileOptions({
     return getParentPath(path);
   }, [type, name, config.object, path]);
   const relativePath = useMemo(() => getRelativePath(normalizedPath, rootPath), [normalizedPath, rootPath]);
-  const showRename = type !== "settings" && type !== "file" && canRename !== false;
-  const showDelete = type !== "settings" && canDelete !== false;
+  const showRename = type !== "settings" && type !== "file" && canRename !== false
+    && isMediaOperationAllowed("rename", { configObject: config.object, paths: [normalizedPath] });
+  const showDelete = type !== "settings" && canDelete !== false
+    && isMediaOperationAllowed("delete", { configObject: config.object, paths: [normalizedPath] });
 
   const [newPath, setNewPath] = useState(relativePath);
   const [isRenameOpen, setIsRenameOpen] = useState(false);

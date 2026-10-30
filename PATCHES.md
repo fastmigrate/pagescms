@@ -20,6 +20,7 @@ active FastMigrate release branch.
 
 | FM-007 | Active | Configuration freshness | Check repository configuration during normal reads, update open editors automatically, preserve dirty drafts and reject saves made with obsolete configuration. | Upstream provides equivalent configuration synchronization and draft-preservation behavior. |
 | FM-012 | Candidate | Draft collection ordering | Edit complete numeric collection groups locally and save atomically, with equivalent entry-list movement buttons. | Upstream supports equivalent opt-in draft ordering and atomic conflict-safe writes. |
+| FM-013 | Candidate | Media retention | Optionally deny physical deletion and renaming inside configured media directories while preserving normal reference editing. | Upstream supports equivalent path-based media operation restrictions. |
 | FM-011 | Active | Optional object defaults | Keep empty optional editor objects absent and apply child defaults only to populated optional objects before validation. | Upstream supports equivalent optional-object initialization and validation without changing duplicate-content preservation. |
 
 Each active patch must remain a separate commit, include proportionate tests,
@@ -317,6 +318,40 @@ The [1.7 upgrade guide](https://github.com/better-auth/better-auth/blob/v1.7.14/
 confirms that the account schema is unchanged from 1.6; no database migration
 or issuer backfill is required. Existing account identities and sessions are
 preserved. The remaining production advisories are low or moderate.
+
+## Media retention
+
+Media sources may restrict physical file operations:
+
+```yaml
+media:
+  - name: documents
+    input: public/documents
+    output: /documents
+    extensions: [pdf]
+    operations:
+      delete: false
+      rename: false
+```
+
+Both operations remain allowed by default. Each flag is independent. A false
+flag applies to every path inside that media input directory, including requests
+through overlapping media sources or content aliases. Rename checks both the old
+and new paths. Existing content permissions and menu restrictions still apply.
+The menu hides denied operations and the actual file routes reject them before
+GitHub or metadata mutations. Delete refreshes configuration before deciding.
+Media inputs and request paths use the existing repository path normalizer.
+
+The field's **Remove** button changes an unsaved reference. Editors can remove
+that reference, upload or select another file, and use normal content **Save**.
+Upload creates a separate asset immediately. A failed upload or content save does
+not remove the previously saved file. This policy retains unused files too. It
+does not inspect references or prevent an operator from changing files outside
+the CMS. Cleanup remains an operator action.
+
+Deploy a CMS revision supporting these strict configuration options before
+enabling them in website configuration. See
+`tests/MEDIA-RETENTION-QA.md` for local verification and its boundaries.
 
 ## Draft collection ordering
 

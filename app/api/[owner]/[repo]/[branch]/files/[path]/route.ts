@@ -3,7 +3,7 @@ import { withinMedia } from "@/lib/media-metadata";
 import { assertFileWriteOrigin, assertMediaContent, readFileRequest } from "@/lib/upload-limits";
 import { type NextRequest } from "next/server";
 import { createOctokitInstance } from "@/lib/utils/octokit";
-import { isContentOperationAllowed } from "@/lib/operations";
+import { isContentOperationAllowed, isMediaOperationAllowed } from "@/lib/operations";
 import { readFns, writeFns } from "@/fields/registry";
 import { configVersion, parseConfig, normalizeConfig } from "@/lib/config";
 import { stringify, parse } from "@/lib/serialization";
@@ -596,6 +596,8 @@ export async function DELETE(
     if (!sha) throw new Error(`"sha" is required.`);
 
     const config = await getConfig(params.owner, params.repo, params.branch, {
+      sync: true,
+      ttlMs: 0,
       getToken: async () => token,
     });
     if (!config) throw new Error(`Configuration not found for ${params.owner}/${params.repo}/${params.branch}.`);
@@ -641,6 +643,10 @@ export async function DELETE(
           !schema.extensions.includes(getFileExtension(normalizedPath))
         ) throw new Error(`Invalid extension "${getFileExtension(normalizedPath)}" for media.`);
         break;
+    }
+
+    if (!isMediaOperationAllowed("delete", { configObject: config.object, paths: [normalizedPath] })) {
+      throw createHttpError("Deleting files isn't allowed in this media directory.", 403);
     }
 
     const commitIdentity = resolveCommitIdentity({

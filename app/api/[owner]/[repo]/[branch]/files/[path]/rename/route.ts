@@ -2,7 +2,7 @@ import { mutateMediaMetadata } from "@/lib/github-media-metadata";
 import { withinMedia } from "@/lib/media-metadata";
 import { assertFileWriteOrigin, readFileRequest } from "@/lib/upload-limits";
 import { createOctokitInstance } from "@/lib/utils/octokit";
-import { isContentOperationAllowed } from "@/lib/operations";
+import { isContentOperationAllowed, isMediaOperationAllowed } from "@/lib/operations";
 import { getSchemaByName } from "@/lib/schema";
 import { assertConfigRevision } from "@/lib/config-revision";
 import { getConfig } from "@/lib/config-store";
@@ -103,6 +103,10 @@ export async function POST(
           !schema.extensions.includes(getFileExtension(normalizedNewPath))
         ) throw new Error(`Invalid extension "${getFileExtension(normalizedNewPath)}" for media.`);
         break;
+    }
+
+    if (!isMediaOperationAllowed("rename", { configObject: config.object, paths: [normalizedPath, normalizedNewPath] })) {
+      throw createHttpError("Renaming files isn't allowed in this media directory.", 403);
     }
 
     const commitIdentity = resolveCommitIdentity({

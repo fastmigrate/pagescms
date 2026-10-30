@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { SWRConfig, type Middleware } from "swr";
 import { ConfigProvider } from "@/contexts/config-context";
 import { editComponents, schemas } from "@/fields/registry";
@@ -24,6 +24,8 @@ const EditComponent = editComponents.file;
 const validator = schemas.file(field, config.object);
 
 export function CatalogExchangeFixture() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
   const [assets, setAssets] = useState(initialAssets);
   const [draft, setDraft] = useState<string | undefined>(originalPath);
   const [saved, setSaved] = useState<string | undefined>(originalPath);
@@ -43,7 +45,7 @@ export function CatalogExchangeFixture() {
 
   return <SWRConfig value={{ provider: () => new Map(), use: [fixtureMiddleware] }}>
     <ConfigProvider value={config} loadConfig={async () => config}>
-      <main className="mx-auto max-w-3xl space-y-6 p-8">
+      <main data-fixture-ready={ready} className="mx-auto max-w-3xl space-y-6 p-8">
         <h1 className="text-2xl font-semibold">Catalogue exchange fixture</h1>
         <p>Production file field and library menu with in-memory assets. Remove changes the draft reference. The modeled Save boundary uses the production required-file validator. Library Delete removes a physical asset immediately.</p>
         <div className="flex flex-wrap gap-4 text-sm">
