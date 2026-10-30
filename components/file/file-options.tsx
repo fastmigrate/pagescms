@@ -38,6 +38,7 @@ export function FileOptions({
   portalProps,
   onDelete,
   onRename,
+  deleteFile,
   children
 }: {
   path: string;
@@ -50,6 +51,7 @@ export function FileOptions({
   portalProps?: any;
   onDelete?: (path: string) => void;
   onRename?: (path: string, newPath: string) => void;
+  deleteFile?: (path: string, params: URLSearchParams) => Promise<{ message: string }>;
   children: React.ReactNode;
 }) {
   const { config } = useConfig();
@@ -83,6 +85,11 @@ export function FileOptions({
             type: (type === "collection" || type === "file") ? "content" : type
           });
           if (name) params.set("name", name);
+
+          if (deleteFile) {
+            resolve(await deleteFile(normalizedPath, params));
+            return;
+          }
 
           const response = await fetch(`/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/files/${encodeURIComponent(normalizedPath)}?${params.toString()}`, {
             method: "DELETE",
