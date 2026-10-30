@@ -36,6 +36,7 @@ type EditorProps = {
   value?: string | string[] | null;
   field: Field;
   onChange: (value: string | string[] | undefined) => void;
+  uploadFile?: (path: string, payload: Record<string, unknown>) => Promise<FileSaveData>;
 };
 
 type FieldOptions = {
@@ -139,7 +140,7 @@ const SortableItem = ({ id, file, config, onRemove, getFileIcon, readonly = fals
 };
 
 const EditComponent = forwardRef((props: EditorProps, ref: React.Ref<HTMLInputElement>) => {
-  const { value, field, onChange } = props;
+  const { value, field, onChange, uploadFile } = props;
   void ref;
   const { config } = useConfig();
   if (!config) throw new Error("Configuration not found.");
@@ -323,6 +324,7 @@ const EditComponent = forwardRef((props: EditorProps, ref: React.Ref<HTMLInputEl
 
   return (
     <MediaUpload
+      uploadFile={uploadFile}
       path={rootPath}
       media={mediaConfig.name}
       extensions={allowedExtensions}

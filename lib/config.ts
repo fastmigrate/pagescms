@@ -5,7 +5,7 @@
  */
 
 import YAML from "yaml";
-import { getFileExtension, extensionCategories } from "@/lib/utils/file";
+import { getFileExtension, extensionCategories, normalizePath } from "@/lib/utils/file";
 import { ConfigSchema } from "@/lib/config-schema";
 import { z } from "zod";
 import mergeWith from "lodash.mergewith";
@@ -136,7 +136,7 @@ const normalizeConfig = (configObject: any) => {
     configObjectCopy.media = configObjectCopy.media.map((mediaConfig: any) => {
       if (mediaConfig.input != null && typeof mediaConfig.input === "string") {
         // Make sure input is relative
-        mediaConfig.input = mediaConfig.input.replace(/^\/|\/$/g, "");
+        mediaConfig.input = normalizePath(mediaConfig.input);
       }
       if (
         mediaConfig.output != null &&

@@ -27,7 +27,7 @@ export async function POST(request: Request, context: { params: Promise<{ owner:
     if (!["generated", "modified", "unmarked"].includes(data.classification) || Object.hasOwn(data, "derivedFrom")) throw createHttpError("An explicit AI classification is required; manual variants are not supported.", 400);
     const identity = resolveCommitIdentity({ configObject: config.object, identityOverride: media.commit?.identity });
     const committer = identity === "user" && session.user.email ? { name: session.user.name?.trim() || session.user.email, email: session.user.email } : undefined;
-    const result = await mutateMediaMetadata({ token, ...params, configObject: config.object, committer, contentName: media.name, user: session.user.email || session.user.name || String(session.user.id || ""), templatesOverride: media.commit?.templates }, { action: "classify", path: params.path, sha: data.sha, revision: data.revision, classification: data.classification });
+    const result = await mutateMediaMetadata({ token, ...params, configObject: config.object, committer, editor: session.user, contentName: media.name, user: session.user.email || session.user.name || String(session.user.id || ""), templatesOverride: media.commit?.templates }, { action: "classify", path: params.path, sha: data.sha, revision: data.revision, classification: data.classification });
     return Response.json({ status: "success", data: result.ai });
   } catch (error) { return toErrorResponse(error); }
 }

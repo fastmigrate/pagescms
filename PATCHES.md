@@ -20,6 +20,7 @@ active FastMigrate release branch.
 
 | FM-007 | Active | Configuration freshness | Check repository configuration during normal reads, update open editors automatically, preserve dirty drafts and reject saves made with obsolete configuration. | Upstream provides equivalent configuration synchronization and draft-preservation behavior. |
 | FM-012 | Candidate | Draft collection ordering | Edit complete numeric collection groups locally and save atomically, with equivalent entry-list movement buttons. | Upstream supports equivalent opt-in draft ordering and atomic conflict-safe writes. |
+| FM-013 | Candidate | Media reference protection | Refuse Delete/Rename of saved typed file/image references and reject content Save with missing local media, using one immutable branch snapshot. | Upstream provides equivalent typed-reference and atomic-write protection. |
 | FM-011 | Active | Optional object defaults | Keep empty optional editor objects absent and apply child defaults only to populated optional objects before validation. | Upstream supports equivalent optional-object initialization and validation without changing duplicate-content preservation. |
 
 Each active patch must remain a separate commit, include proportionate tests,
@@ -317,6 +318,50 @@ The [1.7 upgrade guide](https://github.com/better-auth/better-auth/blob/v1.7.14/
 confirms that the account schema is unchanged from 1.6; no database migration
 or issuer backfill is required. Existing account identities and sessions are
 preserved. The remaining production advisories are low or moderate.
+
+## Media reference protection
+
+FM-013 protects local files used by saved configured `file` and `image` fields,
+including drafts, normalized components, groups, nested objects, lists and blocks.
+Delete and Rename refuse to remove a used file and identify its CMS area and
+field using editor labels. Collection titles and item numbers distinguish uses.
+The message explains how to save a replacement before cleanup. Missing files
+prompt a new selection or upload. Verification failures give retry or
+administrator guidance without exposing storage paths or raw service errors.
+Unused files remain deletable and renameable. Saving a new reference permits
+cleanup of the old file.
+
+The field's **Remove** button changes the unsaved reference. Editors still
+Upload or Select, then **Save** explicitly. Unsaved browser selections do not
+protect an asset. Content Save checks the final serialized values and refuses
+missing media while retaining the draft. External URLs and media-disabled
+web-root URLs without a repository mapping are outside this check.
+If filename Rename succeeds before content Save fails, the editor retains the
+current draft and retries Save at the acknowledged filename. Accepted saves
+populate the cache under the returned file path, including an allocated suffix
+when a new entry requests an existing filename.
+
+Ordinary file Save, Delete and Rename read a fresh Git ref, commit, full tree and
+configuration blob. Duplicate and merge reads use that same immutable snapshot.
+The shared publisher checks actual final paths, including aliases and upload
+collision names, before creating Git objects. It parents one commit to that
+snapshot and performs a non-forced ref update. A concurrent writer produces a
+retryable conflict; the server never replays a validated stale plan.
+
+Enabled media metadata and asset changes share that guarded commit. Existing
+classification revisions, unknown records, fingerprints, identity and commit
+messages are retained. Unrelated pre-existing missing references do not prevent
+cleanup of another unused file. Incomplete trees, failed or oversized reads and
+malformed relevant structured content fail closed.
+
+The unpublished `media.operations.delete/rename` options are removed. Existing
+content `operations.*` and upload filename `media.rename` policies remain.
+Rich-text/code references, technical `.pages.yml` edits and direct external Git
+writes are outside the editorial guarantee. No persistent reference index is
+maintained.
+
+See `tests/MEDIA-RETENTION-QA.md` for reproducible local checks and the later
+private-sandbox and candidate-VM delivery boundaries.
 
 ## Draft collection ordering
 
