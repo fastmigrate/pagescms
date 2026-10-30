@@ -13,8 +13,11 @@ I/O. Its branch model rejects a non-fast-forward update. It never contacts GitHu
 
 Verify these outcomes.
 
-1. Delete and Rename of a referenced file return a refusal with the content name,
-   entry path and indexed field. No Git objects are created.
+1. Delete and Rename of a referenced file return a refusal with visible content
+   and field labels, a collection title when available, and replacement steps.
+   Messages omit internal paths and field keys. Missing-file and verification
+   failures give appropriate selection, retry or administrator guidance.
+   No Git objects are created on refusal.
 2. Unused files can be deleted and renamed. A saved replacement permits cleanup
    of the old file. An unsaved browser change does not permit that cleanup.
 3. Missing or stale content Save preserves the previous document. Merge and

@@ -1,17 +1,14 @@
 import { readFns } from "@/fields/registry";
 import { createHttpError } from "@/lib/api-error";
 import type { BranchTreeEntry, FileChange } from "@/lib/github-branch-mutation";
-import { deepMap, getSchemaByName } from "@/lib/schema";
+import { deepMap, getFieldByPath, getPrimaryField, getSchemaByName, safeAccess } from "@/lib/schema";
 import { parse } from "@/lib/serialization";
 import { decodePathSafely, normalizeMediaPath, normalizePath, serializedTypes } from "@/lib/utils/file";
 import type { Field } from "@/types/field";
 
-export type MediaUse = {
-  assetPath: string;
-  entryPath: string;
-  contentName: string;
-  fieldPath: string;
-};
+type EditorLocation = { contentLabel: string; entryTitle?: string; fieldLabel?: string };
+type MediaReferenceIssue = { kind: "removed" | "missing"; filename: string; location: EditorLocation };
+type VerificationFailure = "read" | "invalid" | "setup" | "limit";
 
 type ProspectiveEntry = BranchTreeEntry & { content?: Buffer };
 type ContentSchema = Record<string, any> & { name: string; fields: Field[]; path: string };
@@ -43,9 +40,60 @@ const belongsTo = (path: string, schema: ContentSchema) => {
     && (!schema.extension || path.endsWith(`.${schema.extension}`));
 };
 
-const context = (schema: ContentSchema, entryPath: string, fieldPath: string) => (
-  `content "${schema.name}", entry "${entryPath}", field "${fieldPath}"`
+const humanize = (name: string, fallback: string) => {
+  const words = name.replace(/([a-z])([A-Z])/gu, "$1 $2").replace(/[_-]+/gu, " ").trim();
+  return /^[\p{L}][\p{L}\p{N} ]*$/u.test(words) && !/^[a-f\d]{16,}$/iu.test(name)
+    ? words.charAt(0).toUpperCase() + words.slice(1) : fallback;
+};
+const labelFor = (value: { label?: string | false; name: string }, fallback: string) => (
+  typeof value.label === "string" && value.label.trim() ? value.label : humanize(value.name, fallback)
 );
+const locationText = (location: EditorLocation) => (
+  [location.contentLabel, location.entryTitle, location.fieldLabel].filter(Boolean).join(" > ")
+);
+const editorLocation = (schema: ContentSchema, entryPath: string, parsed?: any, field?: Field, indexedPath = ""): EditorLocation => {
+  const location: EditorLocation = { contentLabel: labelFor(schema, "Content") };
+  if (schema.type === "collection") {
+    const rowIndex = schema.list ? /^\[(\d+)\]/u.exec(indexedPath)?.[1] : undefined;
+    const record = rowIndex == null ? parsed : parsed?.[Number(rowIndex)];
+    const primary = getPrimaryField(schema);
+    const primaryField = primary ? getFieldByPath(schema.fields, primary) : undefined;
+    const title: unknown = primary && record && primaryField && ["string", "text", "select", "number"].includes(primaryField.type)
+      ? safeAccess(record, primary) : undefined;
+    location.entryTitle = (typeof title === "string" && title.trim() && !/[\/\\\u0000-\u001f]/u.test(title) && !isExternal(title)) || typeof title === "number"
+      ? String(title).trim() : humanize(entryPath.split("/").pop()!.replace(/\.[^.]+$/u, ""), "Untitled entry");
+  }
+  if (field) {
+    const positions = Array.from(indexedPath.matchAll(/\[(\d+)\]/gu), (match) => `, item ${Number(match[1]) + 1}`).join("");
+    location.fieldLabel = `${labelFor(field, "File field")}${positions}`;
+  }
+  return location;
+};
+const verificationMessage = (reason: VerificationFailure, location?: EditorLocation) => {
+  if (reason === "limit") return "Cannot check all files for this change. Contact your site administrator before trying again.";
+  const prefix = location ? `Cannot check files used in ${locationText(location)}` : "Cannot check files for this change";
+  if (reason === "read") return `${prefix} because this content could not be loaded. Try again. If this continues, contact your site administrator.`;
+  if (reason === "invalid") return `${prefix} because this content could not be read correctly. Contact your site administrator before trying again.`;
+  return `${prefix}. Contact your site administrator before trying again.`;
+};
+const referenceMessage = (examples: readonly MediaReferenceIssue[], removedCount: number, missingCount: number) => {
+  const displayed = examples.slice(0, 3);
+  if (removedCount && missingCount) {
+    const absentKind = displayed.every((issue) => issue.kind === "removed") ? "missing"
+      : displayed.every((issue) => issue.kind === "missing") ? "removed" : undefined;
+    const other = examples.find((issue) => issue.kind === absentKind);
+    if (other) displayed[displayed.length - 1] = other;
+  }
+  const details = displayed.map(({ kind, filename, location }) => kind === "removed"
+    ? `"${filename}" is still used in ${locationText(location)}.`
+    : `"${filename}" is unavailable in ${locationText(location)}.`).join(" ");
+  const prefix = missingCount ? "Cannot apply this change." : "Cannot delete or rename this file.";
+  const action = removedCount
+    ? "Select or upload a replacement there and save, then try again."
+    : "Select or upload a replacement there and try again.";
+  const remaining = removedCount + missingCount - displayed.length;
+  return `${prefix} ${details} ${action}${remaining ? ` ${remaining} more use${remaining === 1 ? "" : "s"}.` : ""}`;
+};
 
 const canonicalLocalPath = (value: string) => {
   const pathname = value.split(/[?#]/u)[0];
@@ -126,8 +174,8 @@ export async function assertMediaReferenceSafety({
   for (const schema of schemas) {
     for (const [path, entry] of finalEntries) {
       if ((schema.type === "collection" && entry.type === "tree") || (!removed.size && !changedPaths.has(path)) || !belongsTo(path, schema)) continue;
-      if (!isRegularBlob(entry)) throw createHttpError(`Cannot verify media references in ${context(schema, path, "$root")}. Content is not a regular Git blob.`, 400);
-      if (documents.length >= limits.documents) throw createHttpError(`Cannot verify media references. The scan exceeds ${limits.documents} documents.`, 400);
+      if (!isRegularBlob(entry)) throw createHttpError(verificationMessage("read", editorLocation(schema, path)), 400);
+      if (documents.length >= limits.documents) throw createHttpError(verificationMessage("limit"), 400);
       documents.push({ schema, entry });
     }
   }
@@ -137,29 +185,29 @@ export async function assertMediaReferenceSafety({
   let useCount = 0;
   let removedCount = 0;
   let missingCount = 0;
-  const examples: { use: MediaUse; reason: string }[] = [];
+  const examples: MediaReferenceIssue[] = [];
   let nextDocument = 0;
   const scanDocument = async ({ schema, entry }: typeof documents[number]) => {
-    const fail = (fieldPath: string, reason: string): never => {
-      throw createHttpError(`Cannot verify media references in ${context(schema, entry.path, fieldPath)}. ${reason}`, 400);
+    const fail = (reason: VerificationFailure): never => {
+      throw createHttpError(verificationMessage(reason, editorLocation(schema, entry.path)), 400);
     };
-    if (entry.path === configObject.mediaMetadata) fail("$root", "The reserved media metadata document cannot also be configured as typed content.");
-    if (!serializedTypes.includes(schema.format)) fail("$root", `Unsupported content format "${schema.format}".`);
-    if (entry.size != null && entry.size > limits.documentBytes) fail("$root", "The document exceeds the media-reference scan size limit.");
+    if (entry.path === configObject.mediaMetadata) fail("setup");
+    if (!serializedTypes.includes(schema.format)) fail("setup");
+    if (entry.size != null && entry.size > limits.documentBytes) fail("limit");
     let bytes: Buffer;
     try {
       if (entry.content) bytes = entry.content;
       else {
-        if (!entry.sha) fail("$root", "The document has no immutable blob SHA.");
+        if (!entry.sha) fail("read");
         if (!blobs.has(entry.sha!)) blobs.set(entry.sha!, readBlob(entry.sha!));
         bytes = await blobs.get(entry.sha!)!;
       }
-    } catch (error) {
-      fail("$root", `The document could not be read. ${error instanceof Error ? error.message : "Blob read failed."}`);
+    } catch {
+      fail("read");
     }
-    if (bytes!.length > limits.documentBytes) fail("$root", "The document exceeds the media-reference scan size limit.");
+    if (bytes!.length > limits.documentBytes) fail("limit");
     totalBytes += bytes!.length;
-    if (totalBytes > limits.totalBytes) fail("$root", "The media-reference scan exceeds its total size limit.");
+    if (totalBytes > limits.totalBytes) fail("limit");
 
     let parsed: any;
     try {
@@ -168,13 +216,13 @@ export async function assertMediaReferenceSafety({
       if (schema.format.endsWith("-frontmatter") && isObject(parsed) && parsed.body === text) {
         const delimiter = Array.isArray(schema.delimiters) ? schema.delimiters[0] : schema.delimiters ?? (schema.format === "toml-frontmatter" ? "+++" : schema.format === "json-frontmatter" ? "{" : "---");
         const defaultJson = schema.format === "json-frontmatter" && (schema.delimiters == null || (Array.isArray(schema.delimiters) && schema.delimiters[0] === "{" && schema.delimiters[1] === "}"));
-        if ((defaultJson && text.startsWith("{")) || text.startsWith(`${delimiter}\n`) || text.startsWith(`${delimiter}\r\n`)) fail("$root", "Malformed frontmatter delimiters or frontmatter data.");
+        if ((defaultJson && text.startsWith("{")) || text.startsWith(`${delimiter}\n`) || text.startsWith(`${delimiter}\r\n`)) fail("invalid");
       }
-    } catch (error) {
-      fail("$root", `The document could not be parsed. ${error instanceof Error ? error.message : "Parse failed."}`);
+    } catch {
+      fail("invalid");
     }
-    if (schema.list && !Array.isArray(parsed)) fail("$root", "Expected a root content list.");
-    if (!schema.list && !isObject(parsed)) fail("$root", "Expected a structured content object.");
+    if (schema.list && !Array.isArray(parsed)) fail("invalid");
+    if (!schema.list && !isObject(parsed)) fail("invalid");
     const fields: Field[] = schema.list ? [{ name: "listWrapper", type: "object", list: true, fields: schema.fields }] : schema.fields;
     const displayPath = (path: string) => schema.list ? path.replace(/^listWrapper/u, "") || "$root" : path;
 
@@ -183,31 +231,37 @@ export async function assertMediaReferenceSafety({
       const fieldPath = displayPath(path);
       if (value == null || value === "") return value;
       const multiple = !!field.options?.multiple;
-      if (multiple !== Array.isArray(value)) fail(fieldPath, multiple ? "Expected a list of media paths." : "Expected a media path string.");
+      if (multiple !== Array.isArray(value)) fail("invalid");
       const values: unknown[] = multiple ? value : [value];
       values.forEach((raw, index) => {
         const indexedPath = multiple ? `${fieldPath}[${index}]` : fieldPath;
-        if (typeof raw !== "string") return fail(indexedPath, "Expected a media path string.");
+        if (typeof raw !== "string") return fail("invalid");
         if (!raw) return;
-        if (++useCount > limits.uses) fail(indexedPath, "The media-reference scan exceeds its field limit.");
+        if (++useCount > limits.uses) fail("limit");
         let assetPath: string | undefined;
         try { assetPath = assetPathFor(raw, field, configObject); }
-        catch (error) { fail(indexedPath, `${error instanceof Error ? error.message : "Unsupported media path."} Saved value "${raw.slice(0, 200)}".`); }
+        catch { fail("setup"); }
         if (!assetPath) return;
         const removedTarget = removed.has(assetPath);
         const missingTarget = changedPaths.has(entry.path) && (!finalEntries.has(assetPath) || !isRegularBlob(finalEntries.get(assetPath)!));
         if (!removedTarget && !missingTarget) return;
         if (removedTarget) removedCount++;
         else missingCount++;
-        if (examples.length < limits.examples) examples.push({
-          use: { assetPath, entryPath: entry.path, contentName: schema.name, fieldPath: indexedPath },
-          reason: removedTarget ? "is removed by this change" : "does not exist in the final tree",
-        });
+        const kind = removedTarget ? "removed" : "missing";
+        if (examples.length < limits.examples || !examples.some((example) => example.kind === kind)) {
+          const issue: MediaReferenceIssue = {
+            kind,
+            filename: assetPath.split("/").pop()!,
+            location: editorLocation(schema, entry.path, parsed, field, indexedPath),
+          };
+          if (examples.length < limits.examples) examples.push(issue);
+          else examples[examples.length - 1] = issue;
+        }
       });
       return value;
     }, {
-      onInvalidStructure: ({ field, path, reason }) => {
-        if (hasMedia(field)) fail(displayPath(path), reason);
+      onInvalidStructure: ({ field }) => {
+        if (hasMedia(field)) fail("invalid");
       },
     });
   };
@@ -217,7 +271,6 @@ export async function assertMediaReferenceSafety({
   }));
   const count = removedCount + missingCount;
   if (count) {
-    const details = examples.map(({ use, reason }) => `${context({ name: use.contentName } as ContentSchema, use.entryPath, use.fieldPath)} uses "${use.assetPath}", which ${reason}.`).join(" ");
-    throw createHttpError(`Media reference safety refused this change. ${count} saved reference${count === 1 ? "" : "s"} affected (${removedCount} to removed files, ${missingCount} to missing files). ${details}${count > examples.length ? ` Showing ${examples.length} of ${count}.` : ""}`, 409);
+    throw createHttpError(referenceMessage(examples, removedCount, missingCount), 409);
   }
 }

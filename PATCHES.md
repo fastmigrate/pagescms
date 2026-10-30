@@ -323,9 +323,13 @@ preserved. The remaining production advisories are low or moderate.
 
 FM-013 protects local files used by saved configured `file` and `image` fields,
 including drafts, normalized components, groups, nested objects, lists and blocks.
-Delete and Rename refuse to remove a used file and identify the referring entry
-and indexed field. Unused files remain deletable and renameable. Saving a new
-reference permits cleanup of the old file.
+Delete and Rename refuse to remove a used file and identify its CMS area and
+field using editor labels. Collection titles and item numbers distinguish uses.
+The message explains how to save a replacement before cleanup. Missing files
+prompt a new selection or upload. Verification failures give retry or
+administrator guidance without exposing storage paths or raw service errors.
+Unused files remain deletable and renameable. Saving a new reference permits
+cleanup of the old file.
 
 The field's **Remove** button changes the unsaved reference. Editors still
 Upload or Select, then **Save** explicitly. Unsaved browser selections do not
