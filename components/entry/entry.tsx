@@ -131,6 +131,8 @@ export function Entry({
     return getSchemaByName(config?.object, name)
   }, [config, name]);
   const schemaType = schema?.type;
+  const isSettings = path === ".pages.yml";
+  const hasPath = Boolean(path);
   const operations = useMemo(
     () =>
       resolveContentOperations({
@@ -170,7 +172,7 @@ export function Entry({
           label: showFilenameField ? "Content" : false,
           options: {
             format: schema?.extension || (entry?.name && getFileExtension(entry.name)) || "markdown",
-            lintFn: path === ".pages.yml"
+            lintFn: isSettings
               ? (view: LintView) => {
                   const {parseErrors, validationErrors} = parseAndValidateConfig(view.state.doc.toString());
                   return [...parseErrors, ...validationErrors];
@@ -187,17 +189,17 @@ export function Entry({
             fields: schema.fields
           }]
         : schema.fields;
-  }, [schema, entry, path, showFilenameField]);
+  }, [schema, entry, isSettings, showFilenameField]);
 
   const entryContentObject = useMemo(() => {
-    return path
+    return hasPath
       ? schema?.list === true
         ? { listWrapper: entry?.contentObject }
         : entry?.contentObject
       : schema?.list === true
         ? { listWrapper: [] }
         : {};
-  }, [schema, entry, path]);
+  }, [schema, entry, hasPath]);
 
   useEffect(() => {
     if (!showFilenameField || schemaType !== "collection" || !schema) return;
@@ -213,11 +215,10 @@ export function Entry({
     setIsFilenameUnlocked(true);
   }, [entryContentObject, path, schema, schemaType, showFilenameField]);
 
-  const entryApiUrl = useMemo(() => (
-    path
-      ? `/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/entries/${encodeURIComponent(path)}?name=${encodeURIComponent(name)}&configSha=${encodeURIComponent(config.sha)}`
-      : null
-  ), [config.branch, config.owner, config.repo, config.sha, name, path]);
+  const getEntryApiUrl = useCallback((entryPath: string) => (
+    `/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/entries/${encodeURIComponent(entryPath)}?name=${encodeURIComponent(name)}&configSha=${encodeURIComponent(config.sha)}`
+  ), [config.branch, config.owner, config.repo, config.sha, name]);
+  const entryApiUrl = path ? getEntryApiUrl(path) : null;
 
   const fetchEntryByUrl = useCallback(async (apiUrl: string): Promise<EntryData> => {
     const response = await request(apiUrl);
@@ -253,7 +254,7 @@ export function Entry({
   }, [path, swrEntryLoading]);
 
   useEffect(() => {
-    if (!swrEntryData || !path || editsRef.current) return;
+    if (!swrEntryData || !path || editsRef.current || isSaving) return;
     setEntry(swrEntryData);
     setSha(swrEntryData.sha);
     setHasRegisteredChanges(false);
@@ -275,10 +276,10 @@ export function Entry({
     } else if (!title && path && path !== ".pages.yml") {
       setDisplayTitle(`Editing "${getFileName(normalizePath(path))}"`);
     }
-  }, [initialPath, path, schema, swrEntryData, title]);
+  }, [initialPath, isSaving, path, schema, swrEntryData, title]);
 
   useEffect(() => {
-    if (!swrEntryError) return;
+    if (!swrEntryError || swrEntryData || editsRef.current || isSaving) return;
     if (swrEntryError instanceof ConfigurationConflictError) {
       setIsLoading(false);
       setError(null);
@@ -287,7 +288,7 @@ export function Entry({
     const message = swrEntryError instanceof Error ? swrEntryError.message : "Failed to fetch entry.";
     setError(message);
     setIsLoading(false);
-  }, [swrEntryError]);
+  }, [isSaving, swrEntryData, swrEntryError]);
 
   const historyApiUrl = useMemo(() => (
     path
@@ -327,8 +328,9 @@ export function Entry({
     && filenameValue.trim().length > 0
     && filenameValue.trim() !== currentFilename;
 
-  const onSubmit = async (contentObject: Record<string, unknown>) => {
+  const onSubmit = async (values: Record<string, unknown>) => {
     if (pendingConfig !== undefined) { toast.error("Configuration changed. Download your draft and load the updated fields before saving."); return; }
+    const contentObject = structuredClone(values);
     setIsSaving(true);
     const submitStartChangeVersion = changeVersionRef.current;
 
@@ -379,7 +381,6 @@ export function Entry({
           savePath = newPath;
           setPath(newPath);
           setIsFilenameUnlocked(false);
-          router.replace(`/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/collection/${encodeURIComponent(name)}/edit/${encodeURIComponent(newPath)}`);
 
           const collectionKeyPrefix = `/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/collections/${encodeURIComponent(name)}?`;
           void mutate((key) => typeof key === "string" && key.startsWith(collectionKeyPrefix));
@@ -404,12 +405,18 @@ export function Entry({
           "Failed to save file",
         );
         
+        const savedEntry = { ...data.data, contentObject: schema?.list === true ? contentObject.listWrapper : contentObject };
+        // The accepted write supersedes any destination read started by the rename.
+        await mutate(getEntryApiUrl(savePath), savedEntry, { revalidate: false });
         if (data.data.sha !== sha) setSha(data.data.sha);
         if (submitStartChangeVersion === changeVersionRef.current) {
           editsRef.current = false;
           setIsFormDirty(false);
           setHasRegisteredChanges(false);
-          setEntry({ ...data.data, contentObject: schema?.list === true ? contentObject.listWrapper : contentObject });
+          setEntry(savedEntry);
+          if (initialPath && initialPath !== savePath && schemaType === "collection") {
+            router.replace(`/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/collection/${encodeURIComponent(name)}/edit/${encodeURIComponent(savePath)}`);
+          }
         }
 
         if (!path && schemaType === "collection") router.push(`/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/collection/${encodeURIComponent(name)}/edit/${encodeURIComponent(data.data.path)}`);
@@ -449,7 +456,7 @@ export function Entry({
     }
   };
 
-  const isBusy = isLoading || isSaving;
+  const isBusy = isSaving || (isLoading && !isFormDirty && !hasRegisteredChanges);
   const configUpdateBlocked = isSaving || isFormDirty || hasRegisteredChanges || filenameChanged;
   useEffect(() => {
     setUpdateBlocked(configUpdateBlocked);
@@ -885,21 +892,21 @@ export function Entry({
   }
   
   return (
-    isLoading
+    isLoading && !isSaving && !isFormDirty && !hasRegisteredChanges
       ? loadingSkeleton
       : <EntryForm
-        key={`${config.sha}/${path ?? "new"}/${entry?.sha ?? "unsaved"}`}
+        key={`${config.sha}/${initialPath ?? "new"}/${entry?.sha ?? "unsaved"}`}
         fields={entryFields}
         contentObject={entryContentObject}
         onSubmit={onSubmit}
         filePath={
           showFilenameField
-            ? <InputGroup data-disabled={path ? !isFilenameUnlocked : false}>
+            ? <InputGroup data-disabled={isSaving || (path ? !isFilenameUnlocked : false)}>
                 <InputGroupInput
                   value={filenameValue}
                   onChange={(event) => setFilenameValue(event.target.value)}
                   placeholder="Filename"
-                  disabled={path ? !isFilenameUnlocked : false}
+                  disabled={isSaving || (path ? !isFilenameUnlocked : false)}
                   aria-label="Filename"
                 />
                 {path && filenameFieldMode === "enabled" && canRename && (
@@ -910,6 +917,7 @@ export function Entry({
                           type="button"
                           variant="ghost"
                           size="icon-xs"
+                          disabled={isSaving}
                           onClick={() => setIsFilenameUnlocked((prev) => !prev)}
                           aria-label={isFilenameUnlocked ? "Lock filename" : "Unlock filename"}
                         >

@@ -336,6 +336,8 @@ Upload or Select, then **Save** explicitly. Unsaved browser selections do not
 protect an asset. Content Save checks the final serialized values and refuses
 missing media while retaining the draft. External URLs and media-disabled
 web-root URLs without a repository mapping are outside this check.
+If filename Rename succeeds before content Save fails, the editor retains the
+current draft and retries Save at the acknowledged filename.
 
 Ordinary file Save, Delete and Rename read a fresh Git ref, commit, full tree and
 configuration blob. Duplicate and merge reads use that same immutable snapshot.

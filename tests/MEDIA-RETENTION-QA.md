@@ -60,6 +60,21 @@ Injected in-memory API responses model the external write boundary. Its Save
 button invokes the real file validator. It does not claim authenticated GitHub
 write proof or replace the production Entry save regressions.
 
+Open `/dev/fixtures/entry-rename` or run the production Entry regression.
+
+```sh
+node scripts/check-entry-rename-fixture.mjs
+```
+
+This check covers object, root-list and code editors. A held Rename succeeds,
+then content Save refuses a missing replacement. Newer edits stay visible and
+the recovery download retains the text, reference and acknowledged filename.
+Retry saves to that filename without repeating Rename. Delayed stale or failed
+destination reads preserve the draft, including failures received after the
+retry succeeds. The code
+mode checks editor state only; it does not extend typed media-reference checks
+to code content.
+
 Local tests do not replace an authenticated private-sandbox Git write smoke,
 completed Codex review, reviewed candidate VM verification or production rollout
 gates. The local phase performs no push, publication, database migration or
