@@ -34,6 +34,7 @@ import { EmptyCreate } from "@/components/empty-create";
 import { FileOptions } from "@/components/file/file-options";
 import { presetColumns, presetColumnId, presetRequestFields } from "@/lib/collection-sort";
 import { resolveCollectionColumns, selectCollectionSource } from "@/lib/collection-columns";
+import { resolveCollectionGrouping } from "@/lib/collection-group";
 import { CollectionCell } from "./collection-cell";
 import { CollectionTable } from "./collection-table";
 import { CollectionReorder } from "./collection-reorder";
@@ -202,6 +203,10 @@ export function Collection({ name, path, request = fetch }: { name: string; path
   const canDelete = operations.delete;
 
   const viewFields = useMemo(() => resolveCollectionColumns(schema), [schema]);
+  const grouping = useMemo(() => resolveCollectionGrouping(
+    schema.view?.groupBy,
+    schema.view?.groupBy ? getFieldByPath(schema.fields ?? [], schema.view.groupBy) : undefined,
+  ), [schema]);
 
   const primaryField = useMemo(
     () => getPrimaryField(schema) ?? "name",
@@ -976,13 +981,14 @@ export function Collection({ name, path, request = fetch }: { name: string; path
     </div>
   ) : (
     <CollectionTable
-      key={name}
+      key={grouping ? `${name}:${config.sha}` : name}
       columns={columns}
       data={data}
       search={tableSearch}
       setSearch={setTableSearch}
       initialState={initialState}
       sortPresets={schema.view?.sortPresets}
+      grouping={grouping}
       toolbarActions={schema.view?.reorder ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

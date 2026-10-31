@@ -125,6 +125,27 @@ preset is restored. Presets do not filter drafts, reorder content files or write
 computed fields. Leave presets unset to retain the previous UI. See
 `tests/COLLECTION-SORT-QA.md` for validation and rollout boundaries.
 
+Optional `view.groupBy` references one single-select field. It resolves headings
+from the field's existing option labels, including inherited components and
+nested object fields. Grouping
+requires a normal flat collection with explicit `subfolders: false`, a named
+default sort preset, and the grouping field as the first rule of every preset.
+Tree/node views, root lists and manual ordering cannot enable it.
+
+The existing preset comparator, search and global paginator remain authoritative.
+Each group on the current page renders a native table body and row-group heading.
+Headings use no entry slots and repeat when a group continues on another page.
+Unknown values retain their raw label, and missing values remain visible in a
+final `(empty)` group. Empty searches retain the ordinary empty state.
+
+Grouped views keep preset ordering fixed by disabling visible column-header
+sorting. Hidden preset sorting stays enabled. A sole preset selector is hidden
+only for an explicitly grouped view; multiple grouped presets keep the selector.
+Ungrouped views retain their existing selectors and column sorting. Grouping
+does not write content or add stored ordering fields.
+`tests/collection-group.test.mts` exercises normalized metadata, the real table,
+filtering, pagination and lossless groups.
+
 ## Bounded uploads
 
 Uploads have an explicit decimal 7.5 MB (7,500,000 byte) per-file limit. Both
