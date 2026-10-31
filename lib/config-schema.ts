@@ -648,6 +648,9 @@ const ContentLeafSchema = z
             )
             .optional(),
           sortPresets: z.array(SortPresetSchema).min(1).optional(),
+          groupBy: z.string().regex(/^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*$/)
+            .refine(value => !value.split(".").some(part => ["__proto__", "prototype", "constructor"].includes(part)))
+            .optional(),
           reorder: ReorderConfigSchema.optional(),
           search: z
             .array(
@@ -980,6 +983,24 @@ const ConfigSchema = z
       if (item.view?.default?.sortPreset) {
         if (!names.has(item.view.default.sortPreset)) ctx.addIssue({ code: 'custom', message: 'Unknown default sort preset.', path: [...path, 'view', 'default', 'sortPreset'] });
         if (item.view.default.sort != null || item.view.default.order != null) ctx.addIssue({ code: 'custom', message: 'Choose a default sort preset or a default column sort, not both.', path: [...path, 'view', 'default'] });
+      }
+
+      if (item.view?.groupBy) {
+        const groupPath = [...path, "view", "groupBy"];
+        const field = findField(item.view.groupBy);
+        if (item.type !== "collection" || item.subfolders !== false || item.list
+          || item.view.layout === "tree" || item.view.node || item.view.reorder) {
+          ctx.addIssue({ code: "custom", message: "Grouping requires a flat collection with subfolders: false and without nodes, root lists or manual ordering.", path: groupPath });
+        }
+        if (!field || field.type !== "select") {
+          ctx.addIssue({ code: "custom", message: "Grouping must reference an existing single-select field.", path: groupPath });
+        }
+        if (!item.view.default?.sortPreset || !names.has(item.view.default.sortPreset)) {
+          ctx.addIssue({ code: "custom", message: "Grouping requires a named default sort preset.", path: groupPath });
+        }
+        if (presets.some((preset: any) => preset.fields[0]?.field !== item.view.groupBy)) {
+          ctx.addIssue({ code: "custom", message: "Every grouped sort preset must begin with the grouping field.", path: groupPath });
+        }
       }
 
       if (item.view?.reorder) {

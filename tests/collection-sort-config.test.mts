@@ -76,3 +76,99 @@ test('rejects nested preset paths through non-object fields', () => {
   value.fields[0].type = 'object';
   assert.equal(ConfigSchema.safeParse(config(value)).success,true);
 });
+
+test('grouped flat collections accept a select field and a leading named default preset', () => {
+  const grouped = {
+    ...entry,
+    subfolders: false,
+    fields: [
+      {name:'section',type:'select',options:{values:[{value:'press',label:'Presse'},{value:'tv',label:'TV'}]}},
+      {name:'publishedDate',type:'date'},
+    ],
+    view: {
+      fields: ['publishedDate'], groupBy: 'section',
+      sortPresets: [{name:'website',label:'Website',fields:[{field:'section',order:'asc',values:['press','tv']},{field:'publishedDate',order:'desc'}]}],
+      default: {sortPreset:'website'},
+    },
+  };
+  const result = ConfigSchema.safeParse(config(grouped));
+  assert.equal(result.success,true,JSON.stringify(result.error?.issues));
+});
+
+const groupedEntry = () => ({
+  ...entry,
+  subfolders: false,
+  fields: [
+    {name:'section',type:'select',options:{values:[{name:'press',label:'Presse'},{name:'tv',label:'TV'}]}},
+    {name:'publishedDate',type:'date'},
+  ],
+  view: {
+    groupBy:'section',
+    sortPresets:[{name:'website',label:'Website',fields:[{field:'section',order:'asc',values:['press','tv']},{field:'publishedDate',order:'desc'}]}],
+    default:{sortPreset:'website'},
+  },
+});
+
+test('grouping rejects unsupported collection shapes and sorting contracts', () => {
+  for (const patch of [
+    {type:'file'}, {subfolders:undefined}, {subfolders:true}, {list:true},
+    {view:{layout:'tree'}}, {view:{node:'index.json'}},
+    {view:{reorder:{field:'publishedDate',sortPreset:'website'}}},
+    {view:{default:undefined}}, {view:{default:{sortPreset:'missing'}}},
+    {view:{sortPresets:undefined}},
+    {view:{sortPresets:[{name:'website',label:'Website',fields:[{field:'publishedDate',order:'desc'},{field:'section',order:'asc'}]}]}},
+  ]) {
+    const value = groupedEntry();
+    const result = ConfigSchema.safeParse(config({...value,...patch,view:{...value.view,...patch.view}}));
+    assert.equal(result.success,false,JSON.stringify(patch));
+  }
+  const value = groupedEntry();
+  value.view.sortPresets.push({name:'oldest',label:'Oldest',fields:[{field:'section',order:'asc',values:['press','tv']},{field:'publishedDate',order:'asc'}]});
+  assert.equal(ConfigSchema.safeParse(config(value)).success,true);
+  value.view.sortPresets[1].fields.reverse();
+  assert.equal(ConfigSchema.safeParse(config(value)).success,false);
+});
+
+test('grouping requires a scalar single-select and a safe existing field path', () => {
+  for (const field of [
+    {name:'section',type:'string'},
+    {name:'section',type:'select',list:true},
+    {name:'section',type:'select',options:{multiple:true}},
+    {name:'section',type:'object',fields:[{name:'value',type:'select'}]},
+  ]) {
+    const value = groupedEntry();
+    assert.equal(ConfigSchema.safeParse(config({...value,fields:[field,value.fields[1]]})).success,false,JSON.stringify(field));
+  }
+  for (const groupBy of ['', 'missing', '__proto__.section', 'section.constructor', 'section[0]']) {
+    const value = groupedEntry();
+    assert.equal(ConfigSchema.safeParse(config({...value,view:{...value.view,groupBy}})).success,false,groupBy);
+  }
+});
+
+test('grouping reuses inherited component options and nested field resolution', () => {
+  const value = groupedEntry();
+  const raw = {
+    components:{section:{component:'base'},base:{type:'select',options:value.fields[0].options},meta:{type:'object',fields:[{name:'section',component:'section',options:{placeholder:'Bereich'}}]}},
+    content:[{...value,fields:[{name:'meta',component:'meta'},value.fields[1]],view:{...value.view,groupBy:'meta.section',sortPresets:[{...value.view.sortPresets[0],fields:[{field:'meta.section',order:'asc',values:['press','tv']},{field:'publishedDate',order:'desc'}]}]}}],
+  };
+  assert.equal(ConfigSchema.safeParse(raw).success,true);
+  raw.components.base.options = {...raw.components.base.options,multiple:true} as any;
+  assert.equal(ConfigSchema.safeParse(raw).success,false);
+  raw.components.meta.fields[0].options = {multiple:false} as any;
+  assert.equal(ConfigSchema.safeParse(raw).success,true);
+  raw.components.section.component = 'missing';
+  assert.equal(ConfigSchema.safeParse(raw).success,false);
+  raw.components.section.component = 'section';
+  assert.equal(ConfigSchema.safeParse(raw).success,false);
+});
+
+
+test('valid manual ordering remains available only without browse grouping', () => {
+  const value:any = groupedEntry();
+  value.format = 'json';
+  value.fields.push({name:'order',type:'number'});
+  value.view.reorder = {field:'order',sortPreset:'website'};
+  value.view.sortPresets[0].fields.push({field:'order',order:'asc'});
+  assert.equal(ConfigSchema.safeParse(config({...value,view:{...value.view,groupBy:undefined}})).success,true);
+  assert.equal(ConfigSchema.safeParse(config(value)).success,false);
+});

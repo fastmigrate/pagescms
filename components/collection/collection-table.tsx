@@ -14,6 +14,8 @@ import {
   Row
 } from "@tanstack/react-table"
 import { presetColumnId, type SortPreset } from "@/lib/collection-sort";
+import { collectionSections, type CollectionGrouping } from "@/lib/collection-group";
+import { safeAccess } from "@/lib/schema";
 import { Button } from "@/components/ui/button";
 import {
   Pagination,
@@ -77,6 +79,7 @@ export function CollectionTable<TData extends TableData>({
   isTree = false,
   primaryField,
   sortPresets = [],
+  grouping,
   toolbarActions,
 }: {
   columns: any[],
@@ -90,6 +93,7 @@ export function CollectionTable<TData extends TableData>({
   isTree?: boolean,
   primaryField?: string,
   sortPresets?: SortPreset[],
+  grouping?: CollectionGrouping,
   toolbarActions?: ReactNode,
 }) {
   const [expanded, setExpanded] = useState<ExpandedState>({});
@@ -153,6 +157,11 @@ export function CollectionTable<TData extends TableData>({
     ? sortPresets.find(preset => presetColumnId(preset.name) === sorting[0].id)?.name ?? ''
     : '';
   const visibleColumnCount = table.getVisibleLeafColumns().length;
+  const showPresetSelector = sortPresets.length > 0 && (!grouping || sortPresets.length > 1);
+  const pageRows = table.getRowModel().rows;
+  const sections = grouping
+    ? collectionSections(pageRows, grouping, (row, field) => safeAccess(row.original.fields ?? {}, field))
+    : undefined;
 
   const currentPage = table.getState().pagination.pageIndex;
   const pageCount = table.getPageCount();
@@ -195,11 +204,96 @@ export function CollectionTable<TData extends TableData>({
     });
   }, [isTree, path, handleRowExpansion, table, data]);
 
+  const renderRow = (row: Row<any>) => (
+  <TableRow key={row.id}>
+    {
+      row.original.type === "dir"
+        ? <>
+          <TableCell
+            colSpan={visibleColumnCount - 1}
+            className="p-2 border-b py-0 h-12"
+            style={{
+              paddingLeft: row.depth > 0
+                ? `${row.depth * 2}rem`
+                : undefined
+            }}
+          >
+            {isTree
+              ? <button
+                  className="flex items-center gap-x-2 font-medium"
+                  onClick={() => handleRowExpansion(row as Row<TData>)}
+                >
+                  {loadingRows[row.id]
+                    ? <Loader className="h-4 w-4 animate-spin text-muted-foreground" />
+                    : row.getIsExpanded()
+                      ? <FolderOpen className="h-4 w-4" />
+                      : <Folder className="h-4 w-4" />
+                  }
+                  {row.original.name}
+                </button>
+              : <Link
+                  className="flex items-center gap-x-2 font-medium"
+                  href={`${pathname}?path=${encodeURIComponent(row.original.path)}`}
+                >
+                  <Folder className="h-4 w-4" />
+                  {row.original.name}
+                </Link>
+            }
+          </TableCell>
+          <TableCell className="p-2 border-b py-0 h-12">
+            {
+              (() => {
+                const lastCell = row.getVisibleCells()[row.getVisibleCells().length - 1];
+                return flexRender(lastCell.column.columnDef.cell, lastCell.getContext());
+              })()
+            }
+          </TableCell>
+          </>
+        : row.getVisibleCells().map((cell, index) => (
+          <TableCell
+            key={cell.id}
+            className={cn(
+              "p-2 border-b py-0 h-12",
+              cell.column.columnDef.meta?.className,
+            )}
+            style={{
+              paddingLeft: (cell.column.id === primaryField && row.depth > 0)
+                ? `${row.depth * 1.5}rem`
+                : undefined
+            }}
+          >
+            <div className="flex items-center gap-x-1">
+              {row.depth > 0 && cell.column.id === primaryField && <LShapeIcon className="h-4 w-4 text-muted-foreground opacity-50"/>}
+              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+              {isTree && row.getCanExpand() && cell.column.id === primaryField && (
+                loadingRows[row.id]
+                  ? <Button variant="ghost" size="icon-sm" className="h-6 w-6 rounded-full" disabled>
+                      <Loader className="h-4 w-4 animate-spin text-muted-foreground" />
+                    </Button>
+                  : <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="h-6 w-6 rounded-full"
+                      onClick={() => handleRowExpansion(row as Row<TData>)}
+                      disabled={row.getIsExpanded() && Array.isArray(row.original.subRows) && row.original.subRows.length === 0}
+                    >
+                      {row.getIsExpanded() ? <CircleMinus className="text-muted-foreground hover:text-foreground h-4 w-4" /> : <CirclePlus className="text-muted-foreground hover:text-foreground h-4 w-4" />}
+                      <span className="sr-only">{row.getIsExpanded() ? 'Collapse row' : 'Expand row'}</span>
+                    </Button>
+              )}
+
+            </div>
+          </TableCell>
+        ))
+    }
+  </TableRow>
+  );
+
   return (
     <div className="space-y-2">
-      {(sortPresets.length > 0 || toolbarActions) && (
+      {(showPresetSelector || toolbarActions) && (
         <div className="flex flex-wrap items-end gap-3">
-          {sortPresets.length > 0 && <label className="flex flex-col items-start gap-1 text-sm">
+          {showPresetSelector && <label className="flex flex-col items-start gap-1 text-sm">
             <span>Sortierung</span>
             <select
               className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-ring"
@@ -225,12 +319,13 @@ export function CollectionTable<TData extends TableData>({
                   <TableHead
                     key={header.id}
                     className={cn(
-                      "p-2 h-10 border-b hover:bg-muted/50 cursor-pointer select-none last:cursor-default last:hover:bg-background truncate",
+                      "p-2 h-10 border-b truncate",
+                      !grouping && "hover:bg-muted/50 cursor-pointer select-none last:cursor-default last:hover:bg-background",
                       header.column.columnDef.meta?.className
                     )}
-                    onClick={header.column.getToggleSortingHandler()}
+                    onClick={grouping ? undefined : header.column.getToggleSortingHandler()}
                     title={
-                      header.column.getCanSort()
+                      !grouping && header.column.getCanSort()
                         ? header.column.getNextSortingOrder() === 'asc'
                           ? 'Sort ascending'
                           : header.column.getNextSortingOrder() === 'desc'
@@ -246,10 +341,10 @@ export function CollectionTable<TData extends TableData>({
                             header.column.columnDef.header,
                             header.getContext()
                           )}
-                      {{
+                      {!grouping && {
                         asc: <ArrowUp className="h-4 w-4 opacity-50"/>,
                         desc: <ArrowDown className="xh-4 w-4 opacity-50"/>,
-                      }[header.column.getIsSorted() as string] ?? null}
+                      }[header.column.getIsSorted() as string]}
                     </div>
                   </TableHead>
                 )
@@ -257,100 +352,26 @@ export function CollectionTable<TData extends TableData>({
             </TableRow>
           ))}
         </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows?.length ? (
-            table.getRowModel().rows.map((row) => (
-              <TableRow key={row.id}>
-                {
-                  row.original.type === "dir"
-                    ? <>
-                      <TableCell
-                        colSpan={visibleColumnCount - 1}
-                        className="p-2 border-b py-0 h-12"
-                        style={{
-                          paddingLeft: row.depth > 0
-                            ? `${row.depth * 2}rem`
-                            : undefined
-                        }}
-                      >
-                        {isTree
-                          ? <button
-                              className="flex items-center gap-x-2 font-medium"
-                              onClick={() => handleRowExpansion(row as Row<TData>)}
-                            >
-                              {loadingRows[row.id]
-                                ? <Loader className="h-4 w-4 animate-spin text-muted-foreground" />
-                                : row.getIsExpanded()
-                                  ? <FolderOpen className="h-4 w-4" />
-                                  : <Folder className="h-4 w-4" />
-                              }
-                              {row.original.name}
-                            </button>
-                          : <Link
-                              className="flex items-center gap-x-2 font-medium"
-                              href={`${pathname}?path=${encodeURIComponent(row.original.path)}`}
-                            >
-                              <Folder className="h-4 w-4" />
-                              {row.original.name}
-                            </Link>
-                        }
-                      </TableCell>
-                      <TableCell className="p-2 border-b py-0 h-12">
-                        {
-                          (() => {
-                            const lastCell = row.getVisibleCells()[row.getVisibleCells().length - 1];
-                            return flexRender(lastCell.column.columnDef.cell, lastCell.getContext());
-                          })()
-                        }
-                      </TableCell>
-                      </>
-                    : row.getVisibleCells().map((cell, index) => (
-                      <TableCell
-                        key={cell.id}
-                        className={cn(
-                          "p-2 border-b py-0 h-12",
-                          cell.column.columnDef.meta?.className,
-                        )}
-                        style={{
-                          paddingLeft: (cell.column.id === primaryField && row.depth > 0)
-                            ? `${row.depth * 1.5}rem`
-                            : undefined
-                        }}
-                      >
-                        <div className="flex items-center gap-x-1">
-                          {row.depth > 0 && cell.column.id === primaryField && <LShapeIcon className="h-4 w-4 text-muted-foreground opacity-50"/>}
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          {isTree && row.getCanExpand() && cell.column.id === primaryField && (
-                            loadingRows[row.id]
-                              ? <Button variant="ghost" size="icon-sm" className="h-6 w-6 rounded-full" disabled>
-                                  <Loader className="h-4 w-4 animate-spin text-muted-foreground" />
-                                </Button>
-                              : <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  className="h-6 w-6 rounded-full"
-                                  onClick={() => handleRowExpansion(row as Row<TData>)}
-                                  disabled={row.getIsExpanded() && Array.isArray(row.original.subRows) && row.original.subRows.length === 0}
-                                >
-                                  {row.getIsExpanded() ? <CircleMinus className="text-muted-foreground hover:text-foreground h-4 w-4" /> : <CirclePlus className="text-muted-foreground hover:text-foreground h-4 w-4" />}
-                                  <span className="sr-only">{row.getIsExpanded() ? 'Collapse row' : 'Expand row'}</span>
-                                </Button>
-                          )}
-                          
-                        </div>
-                      </TableCell>
-                    ))
-                }
+        {pageRows.length ? (
+          sections ? sections.map(section => (
+            <TableBody key={section.key}>
+              <TableRow className="hover:bg-transparent">
+                <TableHead scope="rowgroup" colSpan={visibleColumnCount} className="h-11 border-b bg-muted/40 px-2 text-left font-semibold text-foreground">
+                  {section.label}
+                </TableHead>
               </TableRow>
-            ))
-          ) : (
+              {section.rows.map(renderRow)}
+            </TableBody>
+          )) : <TableBody>{pageRows.map(renderRow)}</TableBody>
+        ) : (
+          <TableBody>
             <TableRow className="hover:bg-transparent">
               <TableCell colSpan={visibleColumnCount} className="text-center text-muted-foreground text-sm p-6">
                 <span>No entries</span>
               </TableCell>
             </TableRow>
-          )}
-        </TableBody>
+          </TableBody>
+        )}
       </Table>
       {pageCount > 1 && (
         <footer className="flex items-center justify-end">
