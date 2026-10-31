@@ -2,9 +2,11 @@
 
 import { createContext, useContext, useState } from "react";
 import { Repo } from "@/types/repo";
+import type { getRawUrl } from "@/lib/github-image";
 
 interface RepoContextType extends Repo {
   setBranches: (branches: string[]) => void;
+  resolveImageUrl?: typeof getRawUrl;
 }
 
 const RepoContext = createContext<RepoContextType | undefined>(undefined);
@@ -19,15 +21,17 @@ export const useRepo = () => {
 
 export const RepoProvider = ({
   repo,
-  children
+  children,
+  resolveImageUrl,
 }: {
   repo: Repo;
   children: React.ReactNode;
+  resolveImageUrl?: typeof getRawUrl;
 }) => {
   const [branches, setBranches] = useState<string[]>(repo?.branches || []);
 
   return (
-    <RepoContext.Provider value={{ ...repo, branches, setBranches }}>
+    <RepoContext.Provider value={{ ...repo, branches, setBranches, resolveImageUrl }}>
       {children}
     </RepoContext.Provider>
   );

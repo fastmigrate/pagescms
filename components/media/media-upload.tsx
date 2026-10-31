@@ -8,22 +8,24 @@ import { assertUploadSize } from "@/lib/upload-limits";
 import { getSchemaByName } from "@/lib/schema";
 import { cn } from "@/lib/utils";
 import { requireApiSuccess } from "@/lib/api-client";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { FileSaveData } from "@/types/api";
+import type { Classification } from "@/lib/media-metadata";
+
+const labelableExtensions = ["jpg", "jpeg", "png", "webp", "avif"];
 
 interface MediaUploadContextValue {
   handleFiles: (files: File[]) => Promise<void>;
   accept?: string;
   multiple?: boolean;
   disabled?: boolean;
-  classification?: "generated" | "modified" | "unmarked";
 }
 
 const MediaUploadContext = createContext<MediaUploadContextValue | null>(null);
 
 interface MediaUploadProps {
   uploadFile?: (path: string, payload: Record<string, unknown>) => Promise<FileSaveData>;
-  onClassificationChange?: (value: "generated" | "modified" | "unmarked") => void;
-  showClassification?: boolean;
   children: React.ReactNode;
   path?: string;
   onUpload?: (entry: FileSaveData) => void;
@@ -32,7 +34,6 @@ interface MediaUploadProps {
   multiple?: boolean;
   rename?: boolean | "safe" | "random";
   disabled?: boolean;
-  classification?: "generated" | "modified" | "unmarked";
 }
 
 interface MediaUploadTriggerProps {
@@ -44,7 +45,7 @@ interface MediaUploadDropZoneProps {
   className?: string;
 }
 
-function MediaUploadRoot({ children, path, onUpload, media, extensions, multiple, rename, disabled = false, classification = "unmarked", onClassificationChange, showClassification = true, uploadFile }: MediaUploadProps) {
+function MediaUploadRoot({ children, path, onUpload, media, extensions, multiple, rename, disabled = false, uploadFile }: MediaUploadProps) {
   const { config } = useConfig();
   if (!config) throw new Error(`Configuration not found.`);
 
@@ -55,8 +56,7 @@ function MediaUploadRoot({ children, path, onUpload, media, extensions, multiple
     [media, config.object]
   );
 
-  const [localClassification, setLocalClassification] = useState<"generated" | "modified" | "unmarked">(classification);
-  const uploadClassification = onClassificationChange ? classification : localClassification;
+  const [pendingUpload, setPendingUpload] = useState<{ files: File[]; classification: Classification } | null>(null);
 
   const accept = useMemo(() => {
     if (!configMedia?.extensions && !extensions) return undefined;
@@ -72,7 +72,7 @@ function MediaUploadRoot({ children, path, onUpload, media, extensions, multiple
       : undefined;
   }, [extensions, configMedia?.extensions]);
 
-  const handleFiles = useCallback(async (files: File[]) => {
+  const uploadFiles = useCallback(async (files: File[], classification: Classification) => {
     try {
       for (const file of files) {
         try { assertUploadSize(file.size); } catch (error) {
@@ -98,7 +98,7 @@ function MediaUploadRoot({ children, path, onUpload, media, extensions, multiple
           const fullPath = joinPathSegments([path ?? "", uploadFilename]);
           const payload = {
             type: "media", name: configMedia.name, content,
-            classification: config.object.mediaMetadata ? (["jpg", "jpeg", "png", "webp", "avif"].includes(getFileExtension(uploadFilename).toLowerCase()) ? uploadClassification : "unmarked") : undefined,
+            classification: config.object.mediaMetadata ? (labelableExtensions.includes(getFileExtension(uploadFilename).toLowerCase()) ? classification : "unmarked") : undefined,
           };
           if (uploadFile) return uploadFile(fullPath, payload);
           const response = await fetch(`/api/${config.owner}/${config.repo}/${encodeURIComponent(config.branch)}/files/${encodeURIComponent(fullPath)}`, {
@@ -120,7 +120,16 @@ function MediaUploadRoot({ children, path, onUpload, media, extensions, multiple
     } catch (error) {
       console.error(error);
     }
-  }, [uploadFile, config, path, configMedia?.name, configMedia?.rename, onUpload, rename, uploadClassification]);
+  }, [uploadFile, config, path, configMedia?.name, configMedia?.rename, onUpload, rename]);
+
+  const handleFiles = useCallback(async (files: File[]) => {
+    if (disabled) return;
+    if (config.object.mediaMetadata && files.some(file => labelableExtensions.includes(getFileExtension(file.name).toLowerCase()))) {
+      setPendingUpload({ files, classification: "unmarked" });
+    } else {
+      await uploadFiles(files, "unmarked");
+    }
+  }, [disabled, config.object.mediaMetadata, uploadFiles]);
 
   const contextValue = useMemo(() => ({
     handleFiles,
@@ -131,12 +140,29 @@ function MediaUploadRoot({ children, path, onUpload, media, extensions, multiple
 
   return (
     <MediaUploadContext.Provider value={contextValue}>
-      {showClassification && config.object.mediaMetadata && <label className="flex flex-col items-start gap-2 p-2 text-sm">AI-Kennzeichnung
-        <select name="upload-classification" aria-label="AI-Kennzeichnung" value={uploadClassification} onChange={event => (onClassificationChange ?? setLocalClassification)(event.target.value as typeof uploadClassification)} className="rounded border bg-background px-2 py-1">
-          <option value="unmarked">Keine Kennzeichnung</option><option value="generated">AI generated</option><option value="modified">AI modified</option>
-        </select>
-      </label>}
       {children}
+      <Dialog open={pendingUpload !== null} onOpenChange={open => { if (!open) setPendingUpload(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Upload</DialogTitle>
+            <DialogDescription>{pendingUpload?.files.map(file => file.name).join(", ")}</DialogDescription>
+          </DialogHeader>
+          <label className="flex flex-col items-start gap-2 text-sm">AI-Kennzeichnung für diesen Upload
+            <select name="upload-classification" aria-label="AI-Kennzeichnung" value={pendingUpload?.classification ?? "unmarked"} onChange={event => setPendingUpload(current => current && { ...current, classification: event.target.value as Classification })} className="rounded border bg-background px-2 py-1">
+              <option value="unmarked">Keine Kennzeichnung</option><option value="generated">AI generated</option><option value="modified">AI modified</option>
+            </select>
+          </label>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setPendingUpload(null)}>Cancel</Button>
+            <Button type="button" disabled={disabled} onClick={() => {
+              if (!pendingUpload) return;
+              const upload = pendingUpload;
+              setPendingUpload(null);
+              void uploadFiles(upload.files, upload.classification);
+            }}>Upload</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </MediaUploadContext.Provider>
   );
 }
@@ -179,6 +205,7 @@ function MediaUploadTrigger({ children }: MediaUploadTriggerProps) {
     if (!files || files.length === 0) return;
 
     const validFiles = filterAcceptedFiles(Array.from(files));
+    event.target.value = "";
     if (validFiles.length === 0) return;
 
     context.handleFiles(validFiles);

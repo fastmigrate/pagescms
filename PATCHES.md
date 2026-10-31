@@ -13,6 +13,7 @@ active FastMigrate release branch.
 | FM-005 | Active | Reference images | Optional image previews identify entries in reference choices and the selected single reference. | Upstream supports equivalent image-field previews in reference editors. |
 
 | FM-006 | Active | Upload errors | Reject files above 7.5 MB before encoding and return explicit bounded-request errors before GitHub writes. | Upstream provides equivalent client and server upload validation. |
+| FM-007 | Active | Image AI status | Read the selected image's central AI status and request classification only for a selected new upload. | Upstream separates existing image provenance from upload classification. |
 | FM-007 | Active | Collection sort presets | Named multi-field ordering aligns collection lists with website ordering without stored computed fields. | Upstream supports equivalent named multi-field collection sort presets. |
 | FM-008 | Active | Entry duplication | Let configured collections create a validated draft copy through the normal save API without dispatching a build workflow. | Upstream supports equivalent opt-in collection-entry duplication through its normal save path. |
 | FM-010 | Candidate | AI media classification | Asset-level labels with atomic image/metadata writes and derivative inheritance. | Upstream supports the equivalent native asset provenance contract. |
@@ -165,6 +166,24 @@ JSON, chunked bodies and cancellation, malformed requests, Next's actual
 matcher, same-origin checks, and the actual file route refusing unsafe inputs
 without GitHub writes. This downstream self-hosted limit does not increase a
 hosting provider's separate request limit (for example Vercel).
+
+## Existing image AI status
+
+Image fields read each selected file's AI status from the same media listing
+as the library. Generated, modified, unmarked, stale, loading, and unavailable
+states remain distinct. Saving an entry saves the image reference only.
+
+Selecting or dropping new raster files opens the upload classification dialog.
+Cancel writes nothing. Each new batch starts unmarked, and the confirmed choice
+uses the existing upload payload. Batches with only non-raster files and
+configurations without media metadata retain their immediate upload behavior. The library's explicit
+action for changing an existing asset's classification remains available.
+
+Run `npm run dev:fixtures -- --port 4598` and
+`node scripts/check-image-ai-status-fixture.mjs` for the browser regression.
+Set `PLAYWRIGHT_MODULE` to an installed Playwright module when it is not on the
+default module path. The fixture uses the production image field, library, and
+upload components with in-memory external boundaries and cannot run in production.
 
 ## Native collection-entry duplication
 

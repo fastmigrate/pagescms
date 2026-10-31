@@ -9,12 +9,11 @@ import { MediaAiDialog } from '@/components/media/media-ai-dialog';
 import { Button } from '@/components/ui/button';
 import type { MediaItem } from '@/types/api';
 function UploadFixture() {
- const [classification,setClassification]=useState<'generated'|'modified'|'unmarked'>('unmarked');
  const [saved,setSaved]=useState<FileSaveData[]>([]);
  const config={owner:'fixture',repo:'private',branch:'main',sha:'fixture',version:'fixture',object:{mediaMetadata:'data/media.json',media:[{name:'images',input:'media',extensions:['jpg','png','svg','pdf']} ]}};
- const uploadFile=async(path:string,payload:Record<string,unknown>)=>({path,name:path.split('/').pop(),ai:{classification:payload.classification as typeof classification,revision:'saved',stale:false}});
- const props={media:'images',path:'media',classification,onClassificationChange:setClassification,uploadFile,onUpload:(item:FileSaveData)=>setSaved(previous=>[...previous,item])};
- return <ConfigProvider value={config}><section className="space-y-4" aria-label="Upload fixture"><h2>Upload paths</h2><MediaUpload {...props} showClassification={false}><MediaUpload.Trigger><Button type="button">Fixture Upload</Button></MediaUpload.Trigger></MediaUpload><MediaUpload {...props}><MediaUpload.DropZone><div data-testid="upload-drop-zone" className="border p-8">Drop fixture files</div></MediaUpload.DropZone></MediaUpload><pre data-testid="saved-uploads">{JSON.stringify(saved)}</pre></section><Toaster /></ConfigProvider>;
+ const uploadFile=async(path:string,payload:Record<string,unknown>)=>({path,name:path.split('/').pop(),ai:{classification:payload.classification as 'generated'|'modified'|'unmarked',revision:'saved',stale:false}});
+ const props={media:'images',path:'media',uploadFile,onUpload:(item:FileSaveData)=>setSaved(previous=>[...previous,item])};
+ return <ConfigProvider value={config}><section className="space-y-4" aria-label="Upload fixture"><h2>Upload paths</h2><MediaUpload {...props}><MediaUpload.Trigger><Button type="button">Fixture Upload</Button></MediaUpload.Trigger></MediaUpload><MediaUpload {...props}><MediaUpload.DropZone><div data-testid="upload-drop-zone" className="border p-8">Drop fixture files</div></MediaUpload.DropZone></MediaUpload><pre data-testid="saved-uploads">{JSON.stringify(saved)}</pre></section><Toaster /></ConfigProvider>;
 }
 function SnapshotFixture() {
  const [changed,setChanged]=useState(false);const [simulate,setSimulate]=useState(false);
