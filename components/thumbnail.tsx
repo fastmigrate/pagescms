@@ -19,7 +19,7 @@ export function Thumbnail({
   fit?: "cover" | "contain";
 }) {
   const [result, setResult] = useState<{ key: string; url: string | null; error: boolean } | null>(null);
-  const { owner, repo, isPrivate } = useRepo();
+  const { owner, repo, isPrivate, resolveImageUrl = getRawUrl } = useRepo();
   const { config } = useConfig();
   const branch = config?.branch!;
   const requestKey = JSON.stringify([owner, repo, branch, name, path, isPrivate]);
@@ -31,7 +31,7 @@ export function Thumbnail({
     setResult({ key: requestKey, url: null, error: false });
     const fetchRawUrl = async () => {
       try {
-        const url = await getRawUrl(owner, repo, branch, name, path, isPrivate);
+        const url = await resolveImageUrl(owner, repo, branch, name, path, isPrivate);
         if (!cancelled) setResult({ key: requestKey, url: url || null, error: !url });
       } catch (error) {
         console.warn(error instanceof Error ? error.message : "Image unavailable");
@@ -40,7 +40,7 @@ export function Thumbnail({
     };
     void fetchRawUrl();
     return () => { cancelled = true; };
-  }, [path, owner, repo, branch, isPrivate, name, requestKey]);
+  }, [path, owner, repo, branch, isPrivate, name, requestKey, resolveImageUrl]);
 
   return (
     <div
