@@ -16,6 +16,8 @@ import { CSS } from '@dnd-kit/utilities';
 import { getSchemaByName } from "@/lib/schema";
 import { Thumbnail } from "@/components/thumbnail";
 import { getAllowedExtensions } from "./index";
+import { ImageAiStatus } from "./ai-status";
+import { useSWRConfig } from "swr";
 import type { Config } from "@/types/config";
 import type { Field } from "@/types/field";
 import type { FileSaveData } from "@/types/api";
@@ -119,11 +121,14 @@ const SortableItem = ({ id, file, config, media, onRemove, readonly = false }: {
   };
 
   return (
-    <div ref={setNodeRef} style={style}>
-      <div title={file} className={readonly ? undefined : "cursor-move"} {...(!readonly ? attributes : {})} {...(!readonly ? listeners : {})}>
-        <Thumbnail name={media} path={file} className="rounded-md w-28 h-28"/>
+    <div ref={setNodeRef} style={style} className="w-28 space-y-2">
+      <div className="relative">
+        <div title={file} className={readonly ? undefined : "cursor-move"} {...(!readonly ? attributes : {})} {...(!readonly ? listeners : {})}>
+          <Thumbnail name={media} path={file} className="rounded-md w-28 h-28"/>
+        </div>
+        <ImageTeaser file={file} config={config} onRemove={onRemove} />
       </div>
-      <ImageTeaser file={file} config={config} onRemove={onRemove} />
+      <ImageAiStatus path={file} media={media} />
     </div>
   );
 };
@@ -132,6 +137,7 @@ const EditComponent = forwardRef((props: EditorProps, ref: React.Ref<HTMLInputEl
   const { value, field, onChange, uploadFile } = props;
   void ref;
   const { config } = useConfig();
+  const { mutate } = useSWRConfig();
   if (!config) throw new Error("Configuration not found.");
   const options = (field.options ?? {}) as FieldOptions;
   const isReadonly = Boolean(field.readonly);
@@ -200,6 +206,7 @@ const EditComponent = forwardRef((props: EditorProps, ref: React.Ref<HTMLInputEl
     if (!fileData.path) return;
 
     const normalizedPath = normalizeMediaPath(fileData.path);
+    void mutate(key => typeof key === "string" && key.includes(`/media/${encodeURIComponent(mediaConfig!.name)}/`));
 
     if (isMultiple) {
       setFiles((prev) => {
@@ -210,7 +217,7 @@ const EditComponent = forwardRef((props: EditorProps, ref: React.Ref<HTMLInputEl
     } else {
       setFiles([{ id: generateId(), path: normalizedPath }]);
     }
-  }, [isMultiple, maxFiles]);
+  }, [isMultiple, maxFiles, mediaConfig, mutate]);
 
   const handleRemove = useCallback((fileId: string) => {
     setFiles(prev => prev.filter(file => file.id !== fileId));
@@ -310,11 +317,14 @@ const EditComponent = forwardRef((props: EditorProps, ref: React.Ref<HTMLInputEl
                 </DndContext>
               </div>
             ) : (
-              <div className="aspect-square w-28 relative">
-                <div title={files[0].path}>
-                  <Thumbnail name={mediaConfig.name} path={files[0].path} className="rounded-md w-28 h-28"/>
+              <div className="w-28 space-y-2">
+                <div className="relative aspect-square">
+                  <div title={files[0].path}>
+                    <Thumbnail name={mediaConfig.name} path={files[0].path} className="rounded-md w-28 h-28"/>
+                  </div>
+                  <ImageTeaser file={files[0].path} config={config} onRemove={isReadonly ? undefined : () => handleRemove(files[0].id)} />
                 </div>
-                <ImageTeaser file={files[0].path} config={config} onRemove={isReadonly ? undefined : () => handleRemove(files[0].id)} />
+                <ImageAiStatus path={files[0].path} media={mediaConfig.name} />
               </div>
             )
           )}

@@ -90,3 +90,24 @@ test('actual library route reports unverifiable and stale classifications withou
  assert.equal(data.find((item:any)=>item.name==='cached.jpg').sha,'e'.repeat(40));
  assert.equal(data.find((item:any)=>item.name==='ordinary.jpg').sha,'f'.repeat(40));
 });
+
+test('actual library route resolves the encoded slash to repository-root media and returns its AI status', async () => {
+ const path='generated.jpg';
+ const asset={classification:'generated',sourceSha256:'a'.repeat(64)};
+ const reads:string[]=[];
+ const route=load('app/api/[owner]/[repo]/[branch]/media/[name]/[path]/route.ts',{
+  '@/lib/github-media-metadata':{readMediaMetadataStatus:async()=>({metadata:{version:1,assets:{[path]:asset}},stale:new Map(),sources:new Map()})},
+  '@/lib/media-metadata':metadata,
+  '@/lib/api-repo-context':{getRepoReadContext:async()=>({token:'test',config:{object:{mediaMetadata:'data/media.json',media:[{name:'images',input:'',output:'/'}]}}})},
+  '@/lib/utils/file':load('lib/utils/file.ts',{}),
+  '@/lib/github-cache-file':{getMediaCache:async(_owner:string,_repo:string,_branch:string,directory:string)=>{reads.push(directory);return [{type:'file',name:path,path,sha:'b'.repeat(40)}];}},
+  '@/lib/api-error':load('lib/api-error.ts',{}),
+ });
+ const response=await route.GET(new Request('https://cms.test/api/fixture/private/main/media/images/%2F'),{params:Promise.resolve({owner:'fixture',repo:'private',branch:'main',name:'images',path:'%2F'})});
+ assert.equal(response.status,200);
+ assert.deepEqual(reads,['']);
+ const {data:[item]}=await response.json();
+ assert.equal(item.path,path);
+ assert.equal(item.ai.classification,'generated');
+ assert.equal(item.ai.stale,false);
+});

@@ -284,7 +284,6 @@ const MediaView = ({
     return mediaConfig.input;
   });
   const [data, setData] = useState<MediaItem[] | undefined>(undefined);
-  const [uploadClassification, setUploadClassification] = useState<"generated" | "modified" | "unmarked">("unmarked");
   
   // Filter the data based on filteredExtensions when displaying
   const filteredData = useMemo(() => {
@@ -590,7 +589,7 @@ const MediaView = ({
   const headerNode = useMemo(() => (
     <div className="flex items-center justify-between gap-x-2">
       <div className="min-w-0 truncate overflow-hidden">{breadcrumbNode}</div>
-      <MediaUpload showClassification={false} classification={uploadClassification} onClassificationChange={setUploadClassification} media={mediaConfig.name} path={path} onUpload={handleUpload} extensions={filteredExtensions}>
+      <MediaUpload media={mediaConfig.name} path={path} onUpload={handleUpload} extensions={filteredExtensions}>
         <MediaHeaderActions
           actionNode={mediaActions.length > 0 ? (
             <RepoActionButtons
@@ -614,7 +613,7 @@ const MediaView = ({
         />
       </MediaUpload>
     </div>
-  ), [uploadClassification, breadcrumbNode, config.branch, config.owner, config.repo, filteredExtensions, handleFolderCreate, handleUpload, mediaActions, mediaConfig.input, mediaConfig.label, mediaConfig.name, mediaConfig.output, path]);
+  ), [breadcrumbNode, config.branch, config.owner, config.repo, filteredExtensions, handleFolderCreate, handleUpload, mediaActions, mediaConfig.input, mediaConfig.label, mediaConfig.name, mediaConfig.output, path]);
 
   useOptionalRepoHeader(
     { header: headerNode },
@@ -724,7 +723,7 @@ const MediaView = ({
 
   if (!usePageHeader) {
     return (
-      <MediaUpload classification={uploadClassification} onClassificationChange={setUploadClassification} media={mediaConfig.name} path={path} onUpload={handleUpload} extensions={filteredExtensions}>
+      <MediaUpload media={mediaConfig.name} path={path} onUpload={handleUpload} extensions={filteredExtensions}>
         <div className="flex-1 flex flex-col space-y-4">
           <header className="flex items-center gap-x-2 justify-between">
             <div className="sm:flex-1">
@@ -763,7 +762,7 @@ const MediaView = ({
 
   return (
     <div className="flex-1 flex flex-col space-y-4">
-      <MediaUpload classification={uploadClassification} onClassificationChange={setUploadClassification} media={mediaConfig.name} path={path} onUpload={handleUpload} extensions={filteredExtensions}>
+      <MediaUpload media={mediaConfig.name} path={path} onUpload={handleUpload} extensions={filteredExtensions}>
         {mediaGrid}
       </MediaUpload>
     </div>
